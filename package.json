@@ -1,7 +1,7 @@
 {
   "name": "dsh-vibrancy-skin",
-  "version": "1.2.0",
-  "description": "macOS native vibrancy (frosted glass) material for the DSH Desktop main pane, with a native Settings section. Material only — zero layout changes.",
+  "version": "1.3.2",
+  "description": "macOS native vibrancy (frosted glass) material for the DSH Desktop main pane and third-party sidebars, with a native Settings section. Material only — zero layout changes.",
   "type": "module",
   "main": "index.js",
   "exports": {

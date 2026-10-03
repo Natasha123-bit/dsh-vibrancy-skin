@@ -1,7 +1,131 @@
 # STATE — dsh-vibrancy-skin install
 
-**Install time:** 2026-09-28 03:28, redeployed **04:14** as **v1.2.0** (+0800)
-**Source of truth:** this directory. The copy under `~/.dsh/profiles/desktop/node_modules/dsh-vibrancy-skin/` is a deployment, never edited directly.
+**Install time:** 2026-09-28 03:28, redeployed **04:14** as v1.2.0, **05:47** as v1.3.0, then
+**06:12** as **v1.3.1**, **06:20** as the same 1.3.1 with the temporary diagnostic probe
+stripped back out, and **2026-10-02 23:57 (+0800)** as **v1.3.2** (dialog/overlay opacity fix)
+**Source of truth:** this directory. `~/.dsh/profiles/desktop/node_modules/dsh-vibrancy-skin`
+is a **symlink to this directory**, so an edit here is already the installed copy — there is no
+copy step and no second place to keep in sync.
+
+**2026-10-04 migration:** this directory *is* the migration — the plug-in was moved from
+`~/Documents/DSH-Default/dsh-vibrancy-skin` to `~/Documents/DSH-Projects/dsh-vibrancy-skin`,
+turned into a git repository (`main`, tags `v1.2.0` and `v1.3.2`), and the profile mount was
+re-pointed at the new path (old directory kept as a symlink to it). No plugin code changed:
+`client.js` md5 is `83db8447697538981563052b27dc951d` before and after. See `CHANGELOG.md`.
+
+## v1.3.2 delta (fix: dsh-cost-meter's "本会话费用明细" panel rendered fully transparent)
+
+* **Symptom reported by the user (2026-10-02):** opening dsh-cost-meter's new per-conversation
+  cost detail panel turned the whole panel transparent — the conversation text behind it bled
+  through the numbers, unreadable. The user had already checked that better-sidebar settings were
+  not involved, and asked whether it could be fixed from this plugin.
+* **Root cause, from the shipped code** (`dsh-cost-meter@1.8.6/lib/client.js`, component `fs()`):
+  the entry button and the panel are one React fragment (`e(E, null, button, dialog)`) and the
+  panel is an ordinary `<dialog>` in the normal DOM flow — **no portal**, so `showModal()`
+  (top-layer paint) does not change CSS inheritance. It paints itself with an INLINE style:
+
+  ```js
+  e("dialog", { ref: l, role: "dialog", style: { …, background: "var(--dsw-alias-bg-base,#fff)" } }, …)
+  ```
+
+  `--dsw-alias-bg-base` is exactly the token sheets 1/2/3 retint, so the dialog inherited the
+  translucent tint (tint was 15% at the time → effectively transparent).
+* **Fix (rule 4 in sheet 1):** custom properties are substituted where they are *declared*, and
+  upstream declares `--dsw-alias-bg-base`/`-bg-layer-1` on `<body>`
+  (`dsh-client-ui-theme`: `body{…bluish-00}` + `body[data-ds-dark-theme]{…bluish-950}`). So the
+  sheet now snapshots both on `<body>` (`--dsh-vib-bg-base-solid`, `--dsh-vib-bg-layer-1-solid`)
+  and hands them back to overlays on the overlay element itself:
+
+  ```css
+  body[<gate>] :is(dialog, [role="dialog"], [role="alertdialog"]) {
+    --dsw-alias-bg-base: var(--dsh-vib-bg-base-solid);
+    --dsw-alias-bg-layer-1: var(--dsh-vib-bg-layer-1-solid);
+  }
+  ```
+
+  Deliberate choices: (1) restore the **tokens**, not a hard-coded `background`, so nested cards
+  inside the dialog go opaque too; (2) **not scoped to a pane** — a third party may portal the
+  dialog to the pane, the title strip or `<body>`, and outside our retint scopes the rule is a
+  no-op anyway; (3) it lives in sheet 1, so the master switch still removes it.
+* `smoke-test.mjs` gained 3 checks (snapshot taken from the upstream token; the overlay rule
+  restores both tokens; the rule is not pane-scoped) → **112/112**. Its `parseRules()` helper is now
+  paren-aware when splitting top-level selector lists, because `:is(a, b, c)` contains commas.
+* `verify.sh` §8 gained 2 assertions (snapshot present, overlay rule present) and now expects
+  version 1.3.2 → **25/25**.
+* Also checked for the user: DSH Desktop 2.0.17 / kernel 0.2.0-rc.2 added a **peerDependencies
+  compatibility gate** (`evaluatePluginCompatibility` in `dsh-app-boot`). This plugin declares no
+  `peerDependencies`, so the gate returns early and passes; adding a range would risk the plugin
+  being *rejected* on the next kernel bump, so it is deliberately omitted. README §6 documents the
+  rule, the current per-plugin verdicts, and why the 2026-09-29 `0.2.0-rc.1` warnings in
+  `.plugin-manager/logs/` are stale.
+* **Not yet confirmed by eye:** the user must reload (`Cmd+R`) and reopen the panel once.
+
+## v1.3.1 delta (fix: the visible sidebar is painted by the app's dock, not by the plugin host)
+
+* **Symptom reported by the user after v1.3.0:** with both sidebar switches on, only the top
+  strip of better-sidebar looked frosted; the sidebar body stayed opaque.
+* **Root cause, measured live** (temporary in-client probe, reports in
+  `/tmp/dsh-vibrancy-probe.ndjson`): on this machine dsh-better-sidebar 0.22.0's own host
+  `[data-dsh-better-sidebar]` is an **empty, zero-height div** (`rect=[0,1033,1012,0]`); its
+  `[data-dsh-panel-host]` carries nothing but the **hidden** bottom workbench
+  (`.nArs4W_bottomPanel.nArs4W_bottomPanelHidden`, y beyond the viewport). The sidebar the user
+  actually sees is DSH Desktop's **third grid column**, and the opaque surface is the app's own
+  dockkit dock:
+
+  ```
+  section._tabHost_1s7ij_162._pane_1s7ij_209   bg = rgb(21,21,23) = raw --dsw-alias-bg-base
+  dsh-web-frontend index-DUvMhLle.css:
+    ._tabHost_1s7ij_162:not(._float_1s7ij_156),._emptyTabHost_1s7ij_143 { background: var(--dsw-alias-bg-base) }
+    ._pane_1s7ij_209 { display:flex;flex:1 1 auto;flex-direction:column;min-width:0;min-height:0;overflow:hidden }
+  ```
+
+  Measured rects: `[557,32,455,1001]` (1012px-wide window) and `[1012,32,455,1001]`
+  (1467px-wide window) — exactly the right-hand column. It is **outside**
+  `[data-dsh-better-sidebar]`, which is why retinting only that anchor changed nothing.
+* **Fix:** sheets 2 and 3 now retint the token on three anchors —
+  (a) `[data-dsh-better-sidebar]` (plugin-owned marker), (b)
+  `.dshDesktopRightbarSurface[data-rightbar-col]` (the column root the desktop shell renders as
+  `aside.dshDesktopRightbarSurface[data-rightbar-col]`, children = `renderSlot("rightbar", …)`),
+  (c) `[data-dockkit-host="dock"]` (the dock cell itself, in case it is ever portaled). Sheet 2
+  also forces `background: var(--dsh-vib-pane)` on `[class*="_tabHost_"]`, the dock's tab host.
+* The probe also proved the plumbing was otherwise fine: all three `<style>` present,
+  `--dsw-alias-bg-base`/`layer-1` resolving to `color-mix(in srgb, #151517 15%, transparent)` at
+  the old anchor, 0 iframes, all our rules kept by the parser.
+* Version 1.3.1; `verify.sh` §8 now asserts the two extra anchors; `smoke-test.mjs` gained 4
+  checks (visible-sidebar anchors + tab-host rule + sheet 3 uses the same anchors).
+* **Confirmed by the user** after one `Cmd+R`: 整列磨砂了，已达成我目前的需求 — the whole visible
+  column is frosted. The temporary in-client probe used to prove the root cause has since been
+  removed from `client.js`; the raw reports are kept at
+  `/tmp/dsh-vibrancy-probe.ndjson.done` (242 KB).
+
+## v1.3.0 delta (frosted third-party sidebar, two independent switches)
+
+* Two more stylesheets, each gated by its own switch, both under the master switch:
+
+  | Sheet id | Switch (`localStorage`) | Default | Declares |
+  | --- | --- | --- | --- |
+  | `dsh-vibrancy-skin-styles` | `enabled` (master) | on | `background`, `--dsh-vib-pane`, `--dsh-vib-tint-strength`, `--dsw-alias-bg-base` |
+  | `dsh-vibrancy-skin-panel-styles` | `panels` | **on** | `--dsw-alias-bg-base`, `background` |
+  | `dsh-vibrancy-skin-deep-styles` | `deep` | **off** | `--dsw-alias-bg-layer-1` |
+
+* Sidebar scope is `[data-dsh-better-sidebar]` — the **plugin-owned attribute marker** that
+  dsh-better-sidebar sets on the host element it appends to `<body>`
+  (`src/client/index.tsx:289`), i.e. hash-proof, unlike the CSS-module class names.
+* Justification is the plugin author's own contract (`src/client/sidebar.module.css:13-21`):
+  every surface consumes the generic `--dsw-alias-*` tokens **so that skins can override
+  them**. `--dsw-alias-bg-base` is consumed by `.pane`, the changes view root, the task graph
+  and floating windows; `--dsw-alias-bg-layer-1` by the tab strip, bottom workbench and the
+  nested cards/inputs (≈25 rules in the shipped bundle).
+* Panel level additionally forces `background: var(--dsh-vib-pane)` on
+  `[class*="_tabBar"]` / `[class*="_bottomPanel"]` so those two chrome bars are frosted even
+  with the deep sheet off. Only the hash **prefix** can change between builds.
+* New public API: `setPanels(bool)`, `setDeep(bool)`, `resetAll()`;
+  `getState()` gains `panels` / `deep`. Console banner now prints both switches.
+* Settings page: 4 groups (Appearance / Sidebar / Strength / Fine tuning), 3 switches. When
+  `[data-dsh-better-sidebar]` is absent it shows a notice and the two sidebar switches are
+  disabled — the pane keeps working.
+* **No dsh-better-sidebar file is touched**, at any level. Failure mode is "the frost does not
+  appear", never a crash, never a layout change.
 
 ## v1.2.0 delta (settings integration)
 
@@ -24,34 +148,45 @@
 
 | Path | Change |
 | --- | --- |
-| `~/.dsh/profiles/desktop/node_modules/dsh-vibrancy-skin/{package.json,index.js,client.js,cordis.patch.yml}` | replaced with this directory's contents (v1.2.0) |
-| `~/.dsh/profiles/desktop/package.json` | `dsh.profile.bundles` gains a trailing `"dsh-vibrancy-skin"` (dependencies already had `"*"`) |
+| `~/.dsh/profiles/desktop/node_modules/dsh-vibrancy-skin` | **symlink** to this directory — writing here deploys instantly. **2026-10-04 迁移**：插件源码由 `~/Documents/DSH-Default/dsh-vibrancy-skin` 搬到 `~/Documents/DSH-Projects/dsh-vibrancy-skin`（本仓库），该软链已重指到新路径；旧目录留成指向新路径的软链 |
+| `~/.dsh/profiles/desktop/package.json` | `dsh.profile.bundles` gains a trailing `"dsh-vibrancy-skin"`; `dependencies` 原为 `"link:/Users/leixiaokang/Documents/DSH-Default/dsh-vibrancy-skin"`，2026-10-04 改为 `"link:/Users/leixiaokang/Documents/DSH-Projects/dsh-vibrancy-skin"` |
 | `~/.dsh/profiles/desktop/cordis.patch.yml` | removed the dangling tail pair `- id: vibrancy-skin` / `disabled: true`; the plugin manager later wrote its own `disabled: false` row (no-op, left in place) |
 | `~/.dsh/profiles/desktop/.dsh-market/state.json` | `dsh-vibrancy-skin` removed from `disabled` |
 
 ## Backups created before the change
 
 ```
-~/.dsh/profiles/desktop/package.json.bak-20260928-032324
-~/.dsh/profiles/desktop/cordis.patch.yml.bak-20260928-032324
-~/.dsh/profiles/desktop/package.json.bak              (pre-existing, 02:41)
-~/.dsh/profiles/desktop/cordis.patch.yml.bak          (pre-existing, 01:04)
+<this dir>/.backup/LAST_BACKUP_TS                       -> 20260928-054614
+<this dir>/.backup/v1.2.0-20260928-054614/              full source snapshot (9 files)
+<this dir>/.backup/dsh-vibrancy-skin-v1.2.0-20260928-054614.tar.gz   23 KB, the real rollback point
+<this dir>/.backup/profile-20260928-054614/{package.json,cordis.patch.yml}
+<this dir>/.backup/installed-v1.2.0-20260928-054614     SYMLINK — NOT a rollback point
+~/.dsh/profiles/desktop/{package.json,cordis.patch.yml}.bak-20260928-032324
+~/.dsh/profiles/desktop/{package.json,cordis.patch.yml}.bak   (pre-existing, 02:41 / 01:04)
 ```
 
 ## What has been verified
 
-* `node smoke-test.mjs` — **71/71 checks pass** (v1.2.0). Covers the `__ModuleLoader__` contract,
-  `apply()` running while `document.body` is still null (`dsh.client.immediately` does exactly
-  that), the live tint API, mount state + `document.body` state, both locale dictionaries
-  (`zh`/`en`, no missing key), the rendered settings tree (native classes, 3 groups, switch row
-  as `role="switch"`, 3 keyboard-accessible radios, current row selected, 0–100 input, reset
-  disabled at default), and a property-level audit of the stylesheet.
-* `bash verify.sh` — all green: source/installed copies in sync, profile mount state
-  consistent, patch row not disabled, package resolves through the profile's own
-  `createRequire`, and the manifest satisfies `dsh-client-modules`' validators
-  (`dsh.client.platform` string, `exports["./client"]` resolvable, `dsh.bundle.patch` present).
+* `node smoke-test.mjs` — **109/109 checks pass** (v1.3.1). Covers the `__ModuleLoader__`
+  contract, `apply()` running while `document.body` is still null (`dsh.client.immediately`
+  does exactly that), the live tint API, all three sheets (installed/removed per switch,
+  persisted across a fresh boot, gated by the master), the sidebar switches
+  (`setPanels`/`setDeep` each move only their own sheet; banner reports both), mount state,
+  both locale dictionaries (`zh`/`en`, no missing key), the rendered settings tree (native
+  classes, 4 groups, 3 switches with the right defaults and disabled state, 3
+  keyboard-accessible radios, current row selected, 0–100 input, reset disabled at default,
+  "sidebar missing" notice path), and a rule-by-rule audit of **all three** stylesheets
+  (every selector carries the darwin+transparent scope, material-only declarations, no
+  `backdrop-filter`, no layout property, balanced braces).
+* `bash verify.sh` — all green (8 sections): source == installed (it is a symlink), profile
+  mount state consistent, patch row not disabled, package resolves through the profile's own
+  `createRequire`, the manifest satisfies `dsh-client-modules`' validators, no new host-log
+  rows, and the deployed client half carries all three sheet ids, all three sidebar anchors
+  (`[data-dsh-better-sidebar]`, `.dshDesktopRightbarSurface[data-rightbar-col]`,
+  `[data-dockkit-host="dock"]`), the `[class*="_tabHost_"]` rule, and no `backdrop-filter:`
+  declaration.
 * The mount shape is the one already observed working on 2026-09-28 02:44:05
-  (plain `insert`, blobs in `node_modules`, entry in `dsh.profile.bundles`).
+  (plain `insert`, package resolvable, entry in `dsh.profile.bundles`).
 
 ### Runtime evidence that the mount is live (2026-09-28 04:01)
 
@@ -63,26 +198,37 @@ unrelated (`ui-settings-unarchive-sessions` not found, `llm-deepseek` name misma
 the loader stack really does contain the `vibrancy-skin` entry: the bundle insert worked.
 `.dsh-market/state.json` also no longer lists it under `disabled`.
 
-## What is NOT yet verified
+## Confirmed working (2026-09-28 06:15, by the user's own eyes)
 
-**The visual result and the new Settings page.** Neither the frost nor the settings section has
-been seen by a human eye yet; the CSS/JS half only reaches the renderer after the boot graph is
-refetched by the window.
+After the v1.3.1 anchor fix and one `Cmd+R`, the user reported:
 
-Steps, in order of least disruption:
+> 整列磨砂了，已达成我目前的需求
 
-1. `Cmd+R` in the DSH Desktop window. If the host already re-resolved its layer stack live
-   (`patchReload: live`), this is enough.
-2. Otherwise quit and relaunch DSH Desktop.
+That closes the last open question: with both sidebar switches on, the whole third column (the
+visible dsh-better-sidebar UI) is frosted, in the same material as the conversation pane. The
+causation is also pinned down, not just the outcome — see the v1.3.1 delta and the probe
+evidence in `/tmp/dsh-vibrancy-probe.ndjson.done` (242 KB, kept as a record; the collector
+script `/tmp/dsh-probe-server.py` and the temporary probe inside `client.js` have been
+**removed**, so the shipped client half is probe-free).
 
-Then:
+Nothing about the fix depends on the probe: the probe was read-only diagnostics that wrote to
+`localStorage` + a loopback beacon. Its removal changed `client.js` (md5
+`9ce04cf397b49e587d9875ab2bff72f3`), and the file still passes `node --check`,
+`node smoke-test.mjs` (109/109) and `bash verify.sh` (23 green checks).
 
-* DevTools (`Cmd+Opt+I`) console must show
-  `[dsh-vibrancy-skin] applied — enabled true, tint 40%, theme …, material transparent`.
-* Settings must list a **磨砂玻璃 / Vibrancy** page right after the built-in **Desktop** page,
-  and switching presets must change the pane instantly with no reload.
-* `bash verify.sh` must show no new `vibrancy-skin … not found` rows.
-* Eyeball the acceptance list in `README.md` §5.
+## What is NOT verified automatically
+
+The visual result is confirmed by a human, not by a test — the remaining automated gap is that
+the CSS rules cannot be matched against a live sidebar DOM in CI. What *is* locked in is the
+rule text (all three anchors, material-only declarations, no `backdrop-filter`, no layout
+property) and the switch wiring.
+
+Known limits, recorded for later:
+
+* If the sidebar is ever dragged to a column other than the third one (e.g. a bottom dock or a
+  floating window), the anchors may not cover it; the failure mode is "no frost", never a
+  crash. Adding one anchor selector is the whole fix.
+* Only a dark theme has been looked at with the sidebar levels on.
 
 ## How to undo
 
@@ -107,3 +253,10 @@ only after the host half has already loaded successfully.
    `--dsw-alias-bg-base` (self-reference would blank the pane).
 4. Everything is scoped to `body[data-dsh-desktop-platform="darwin"][data-dsh-desktop-material="transparent"]`
    so any failure degrades to the upstream opaque look instead of an unreadable window.
+5. Third-party plugins are never modified, not even their shipped CSS. Only two things may be
+   relied upon: (a) the plugin-owned attribute markers it writes itself
+   (`[data-dsh-better-sidebar]`), and (b) the generic `--dsw-alias-*` tokens its author
+   documents as the skin extension point. Hashed class names may only be used as
+   `[class*="_localName"]`, where a miss costs a missed tint and nothing else.
+6. Every switch is the presence/absence of a `<style>` element. No switch may be implemented by
+   a "neutral" value of a live style, because that leaves a half-applied state behind.

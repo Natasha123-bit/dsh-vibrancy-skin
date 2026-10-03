@@ -1,0 +1,34 @@
+{
+  "name": "dsh-profile-desktop",
+  "private": true,
+  "dependencies": {
+    "@liustack/modlens": "3.26.5",
+    "@michengai/dsh-archive-manager": "^1.0.6",
+    "@michengai/dsh-btw": "0.1.13",
+    "billion-context": "0.1.163",
+    "dsh-better-sidebar": "0.22.0",
+    "dsh-cost-meter": "1.7.40",
+    "dsh-infinite-gen-4": "github:Minglink/dsh-infinite-gen-4#5e377394fe9d6aeab6380e2a5a5f959bc1384426",
+    "dsh-vibrancy-skin": "link:/Users/leixiaokang/Documents/DSH-Default/dsh-vibrancy-skin",
+    "dshmarket": "1.66.3"
+  },
+  "dsh": {
+    "profile": {
+      "bundles": [
+        "@deepseek-ai/dsh-base",
+        "@deepseek-ai/dsh-web-app",
+        "dsh-cost-meter",
+        "@liustack/modlens",
+        "dshmarket",
+        "dsh-better-sidebar",
+        "@deepseek-ai/dsh-experimental-agent-team-profile",
+        "@deepseek-ai/dsh-experimental-auto-review",
+        "@michengai/dsh-btw",
+        "@michengai/dsh-archive-manager",
+        "billion-context",
+        "dsh-vibrancy-skin"
+      ],
+      "patchReload": "live"
+    }
+  }
+}

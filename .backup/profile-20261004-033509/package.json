@@ -1,0 +1,40 @@
+{
+  "name": "dsh-profile-desktop",
+  "private": true,
+  "dependencies": {
+    "@liustack/modlens": "3.26.5",
+    "@local/dsh-tool-imagegen": "github:Github-CJX/dsh-tool-imagegen",
+    "@michengai/dsh-archive-manager": "^1.0.11",
+    "@michengai/dsh-btw": "^0.1.15",
+    "billion-context": "0.1.180",
+    "dsh-better-sidebar": "^0.24.1",
+    "dsh-cost-meter": "^1.8.6",
+    "dsh-infinite-gen-4": "github:Minglink/dsh-infinite-gen-4#9097ccc1d22596087d47c732c317c29407c752ff",
+    "dsh-purge": "file:../../plugins/dsh-purge",
+    "dsh-synapse": "github:liangmianya/dsh-synapse",
+    "dsh-vibrancy-skin": "link:/Users/leixiaokang/Documents/DSH-Default/dsh-vibrancy-skin",
+    "dshmarket": "1.66.8"
+  },
+  "dsh": {
+    "profile": {
+      "bundles": [
+        "@deepseek-ai/dsh-base",
+        "@deepseek-ai/dsh-web-app",
+        "dshmarket",
+        "@deepseek-ai/dsh-experimental-agent-team-profile",
+        "@deepseek-ai/dsh-experimental-auto-review",
+        "@deepseek-ai/dsh-experimental-voice-input-bundle",
+        "dsh-cost-meter",
+        "dsh-better-sidebar",
+        "@michengai/dsh-btw",
+        "@michengai/dsh-archive-manager",
+        "billion-context",
+        "dsh-vibrancy-skin",
+        "@local/dsh-tool-imagegen"
+      ],
+      "desktopDeselectedBundles": [
+        "dsh-infinite-gen-4"
+      ]
+    }
+  }
+}

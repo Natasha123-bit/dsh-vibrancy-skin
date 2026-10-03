@@ -9,8 +9,13 @@ window.__ModuleLoader__.load({
     const { jsx, jsxs } = require("react/jsx-runtime");
 
     const STYLE_ID = "dsh-vibrancy-skin-styles";
+    const PANEL_STYLE_ID = "dsh-vibrancy-skin-panel-styles";
+    const DEEP_STYLE_ID = "dsh-vibrancy-skin-deep-styles";
     const NS = "dsh-vibrancy-skin";
 
+    /* ======================================================================
+       SHEET 1/3 — the main pane (conversation). Always on when enabled.
+       ====================================================================== */
     const CSS_CONTENT = `
 /* ==========================================================================
    dsh-vibrancy-skin — macOS native vibrancy for the DSH Desktop main pane
@@ -48,7 +53,8 @@ window.__ModuleLoader__.load({
    TUNABLING
      One knob: --dsh-vib-tint-strength (below), also exposed in
      Settings -> 磨砂玻璃 / Vibrancy. Lower = more frost, less text contrast.
-     Higher = closer to the original opaque pane.
+     Higher = closer to the original opaque pane. All three sheets share it,
+     so one slider drives the conversation pane and the sidebar together.
    ========================================================================== */
 
 /* --- 1. Tint -------------------------------------------------------------
@@ -62,6 +68,16 @@ body[data-dsh-desktop-platform="darwin"][data-dsh-desktop-material="transparent"
     var(--dsw-static-neutral-bluish-00, #fff) var(--dsh-vib-tint-strength),
     transparent
   );
+
+  /* --- 1b. Snapshots of the upstream opaque layers -----------------------
+     Custom properties are substituted where they are DECLARED, and upstream
+     declares these two on <body> itself (dsh-client-ui-theme: "body {
+     --dsw-alias-bg-base: var(--dsw-static-neutral-bluish-00) }" plus the
+     [data-ds-dark-theme] twin). Capturing them here therefore stores the
+     literal upstream colour, not a reference that a later retint could
+     shadow. Rule 4 hands the snapshot back to overlays. */
+  --dsh-vib-bg-base-solid: var(--dsw-alias-bg-base);
+  --dsh-vib-bg-layer-1-solid: var(--dsw-alias-bg-layer-1);
 }
 
 body[data-dsh-desktop-platform="darwin"][data-dsh-desktop-material="transparent"][data-ds-dark-theme] {
@@ -97,19 +113,146 @@ body[data-dsh-desktop-platform="darwin"][data-dsh-desktop-material="transparent"
   --dsw-alias-bg-base: var(--dsh-vib-pane);
 }
 
-/* Deliberately NOT touched:
+/* --- 4. Overlays keep the upstream opaque sheet -------------------------
+   The retint in rule 2 is inherited by every descendant of the pane, and the
+   retint in rule 3 by everything under the 32px title strip. That is what
+   makes nested content frosted — but it also reaches things that are NOT
+   pane material: dialog-like overlays, which are meant to be a solid,
+   readable sheet floating above the frost.
+
+   Measured case (dsh-cost-meter 1.8.6, "本会话费用明细"): the entry button and
+   the panel are one React fragment, so the panel is a plain <dialog> in the
+   normal DOM flow (no portal) and it paints itself with an INLINE style
+   "background: var(--dsw-alias-bg-base, #fff)". Under the retint that token
+   is the translucent tint, so the whole panel turned see-through and the
+   conversation text underneath showed through its numbers.
+
+   Restoring the tokens (not a background) keeps such a sheet opaque all the
+   way down, including any nested card inside it that also consumes
+   --dsw-alias-bg-base / --dsw-alias-bg-layer-1. This is a no-op anywhere the
+   skin is off or the tokens were never retinted, so it cannot change the
+   native look of a dialog that is portaled outside the pane.
+
+   Scope: the whole gated document, not one pane. Dialogs are few, are always
+   meant to be readable, and a portal can move the same dialog between the
+   pane, the title strip and <body> without any CSS change on our side. */
+body[data-dsh-desktop-platform="darwin"][data-dsh-desktop-material="transparent"] :is(dialog, [role="dialog"], [role="alertdialog"]) {
+  --dsw-alias-bg-base: var(--dsh-vib-bg-base-solid);
+  --dsw-alias-bg-layer-1: var(--dsh-vib-bg-layer-1-solid);
+}
+
+/* Deliberately NOT touched here:
    .dshDesktopSidebarSurface  — already transparent upstream; this is the
                                 reference look the pane is matching.
-   .dshDesktopRightbarSurface — host of third-party panels (better-sidebar);
-                                it paints nothing itself, and forcing a tint
-                                on other plugins' UI would be a layout-level
-                                intrusion we do not want.
+   .dshDesktopRightbarSurface — the own left-nav column of the app; we only
+                                retint the app's conversation pane from this
+                                sheet.
+   Third-party sidebars (dsh-better-sidebar) are handled by sheet 2/3 below,
+   behind their own switches, so they can be turned off independently.
    Menus / popovers / inputs  — they resolve --dsw-specific-menu and
                                 --dsw-specific-input-major, which derive from
                                 the static palette and are unaffected by the
-                                scoped --dsw-alias-bg-base override. They stay
-                                opaque and readable.
+                                scoped --dsw-alias-bg-base override. Those that
+                                DO consume --dsw-alias-bg-base while sitting in
+                                a retinted subtree are covered by rule 4 above.
 */
+`;
+
+    /* ======================================================================
+       SHEET 2/3 — third-party sidebar (dsh-better-sidebar), "panel" level.
+       Switch: panels (default on).
+       ====================================================================== */
+    const PANEL_CSS_CONTENT = `
+/* ==========================================================================
+   dsh-vibrancy-skin — sidebar surfaces, behind the "侧边栏面板磨砂" switch
+   --------------------------------------------------------------------------
+   Three anchors, all of them stable, none of them a CSS-module hash:
+
+   (a) [data-dsh-better-sidebar] — the host element the plugin appends to
+       <body> itself (src/client/index.tsx:289:
+       'host.setAttribute("data-dsh-better-sidebar", ""); document.body.appendChild(host)')
+       and renders its UI into.
+
+   (b) .dshDesktopRightbarSurface[data-rightbar-col] — DSH Desktop's own third
+       grid column. The desktop shell renders it as
+       'aside.dshDesktopRightbarSurface[data-rightbar-col]' whose children are
+       renderSlot("rightbar", …) (lib/client.js), so the aside is the column
+       root and the slot content hangs underneath it.
+
+   (c) [data-dockkit-host="dock"] — the dockkit cell that hosts a docked
+       panel. DSH's dock paints its tab host with
+       '._tabHost_<hash>_<idx>:not(._float_<hash>_<idx>) { background:
+       var(--dsw-alias-bg-base) }' (dsh-web-frontend index-*.css).
+
+   WHY (b) AND (c) ARE NEEDED, NOT JUST (a): measured live on this machine,
+   dsh-better-sidebar's own host only carries the hidden bottom workbench —
+   its visible file tree / editor is slot content inside the right column, and
+   that column's surface is painted by the APP's dock, not by the plugin:
+   'section._tabHost_<hash>_<idx>._pane_<hash>_<idx>' resolved to
+   rgb(21,21,23) = the raw --dsw-alias-bg-base, because it sits outside
+   [data-dsh-better-sidebar]. Frosting only (a) therefore left the whole
+   visible sidebar opaque. (b) is the column root and covers the dock, (c) is
+   the dock itself, so the tint lands even if the dock is ever portaled
+   elsewhere.
+
+   WHY A TOKEN, NOT PER-ELEMENT RULES: dsh-better-sidebar documents the
+   extension point itself (src/client/sidebar.module.css:13-21) — "every
+   surface here consumes DSH's generic tokens (--dsw-alias-*)" so that skins
+   can restyle it. --dsw-alias-bg-base is consumed by the panel body
+   (.nArs4W_pane), the dock tab host, the changes view root, the task graph
+   and the floating window; re-pointing it once at a column root covers all of
+   them at once, which is exactly how sheet 1 treats the conversation pane.
+
+   The two layer-1 chrome bars (the 34px tab strip and the bottom workbench)
+   keep an explicit rule so they are frosted even while the deeper sheet is
+   off. Their class names are hashed by the CSS-module build
+   (nArs4W_tabBar / nArs4W_bottomPanel); only the hash prefix changes between
+   builds, the local name is stable, and a miss costs nothing but a missed
+   tint.
+   ========================================================================== */
+body[data-dsh-desktop-platform="darwin"][data-dsh-desktop-material="transparent"] [data-dsh-better-sidebar],
+body[data-dsh-desktop-platform="darwin"][data-dsh-desktop-material="transparent"] .dshDesktopRightbarSurface[data-rightbar-col],
+body[data-dsh-desktop-platform="darwin"][data-dsh-desktop-material="transparent"] [data-dockkit-host="dock"] {
+  --dsw-alias-bg-base: var(--dsh-vib-pane);
+}
+
+body[data-dsh-desktop-platform="darwin"][data-dsh-desktop-material="transparent"] [data-dsh-better-sidebar] [class*="_tabBar"],
+body[data-dsh-desktop-platform="darwin"][data-dsh-desktop-material="transparent"] [data-dsh-better-sidebar] [class*="_bottomPanel"],
+body[data-dsh-desktop-platform="darwin"][data-dsh-desktop-material="transparent"] .dshDesktopRightbarSurface[data-rightbar-col] [class*="_tabHost_"],
+body[data-dsh-desktop-platform="darwin"][data-dsh-desktop-material="transparent"] [data-dockkit-host="dock"] [class*="_tabHost_"] {
+  background: var(--dsh-vib-pane);
+}
+`;
+
+    /* ======================================================================
+       SHEET 3/3 — third-party sidebar, "deep" level (nested surfaces).
+       Switch: deep (default off).
+       ====================================================================== */
+    const DEEP_CSS_CONTENT = `
+/* ==========================================================================
+   dsh-vibrancy-skin — sidebar, behind the "深层玻璃" switch (default off)
+   --------------------------------------------------------------------------
+   Retints --dsw-alias-bg-layer-1 across the same three anchors sheet 2 uses
+   (see that sheet for why all three are required): the nested cards, list
+   rows, chips, node cards and inline editors inside the sidebar all consume
+   layer-1, so re-pointing it once makes the *inside* of every surface glass
+   as well instead of only the big flat panels.
+
+   The anchor for the visible side column is
+   .dshDesktopRightbarSurface[data-rightbar-col] + [data-dockkit-host="dock"],
+   not just [data-dsh-better-sidebar]: on this machine the latter only holds
+   the hidden bottom workbench while the visible dock lives in the app's own
+   third column (measured live — see sheet 2's comment).
+
+   Off by default on purpose: the panel surfaces still carry the tint from
+   sheet 2, so text there keeps the same contrast as the conversation pane,
+   while layering more translucency behind text is a taste call.
+   ========================================================================== */
+body[data-dsh-desktop-platform="darwin"][data-dsh-desktop-material="transparent"] [data-dsh-better-sidebar],
+body[data-dsh-desktop-platform="darwin"][data-dsh-desktop-material="transparent"] .dshDesktopRightbarSurface[data-rightbar-col],
+body[data-dsh-desktop-platform="darwin"][data-dsh-desktop-material="transparent"] [data-dockkit-host="dock"] {
+  --dsw-alias-bg-layer-1: var(--dsh-vib-pane);
+}
 `;
 
     /* =====================================================================
@@ -119,10 +262,17 @@ body[data-dsh-desktop-platform="darwin"][data-dsh-desktop-material="transparent"
     const zh = {
       nav: "磨砂玻璃",
       title: "磨砂玻璃",
-      intro: "调节会话面板的玻璃强度。所有改动立即生效，不需要重启，也不需要打开控制台。",
+      intro: "调节会话面板与侧边栏的玻璃强度。所有改动立即生效，不需要重启，也不需要打开控制台。",
       appearanceTitle: "外观",
       appearanceIntro: "把不透明的会话面板换成一层半透明染色，让窗口背后的桌面透出来。",
       enable: "启用磨砂玻璃",
+      sidebarTitle: "侧边栏（better-sidebar）",
+      sidebarIntro: "让第三方侧边栏插件的界面也用同一层玻璃。两级效果各自独立开关，都跟随上面的总开关与强度。",
+      sidebarMissing: "当前没有检测到 dsh-better-sidebar，本组开关暂时不会产生任何效果。",
+      panelsToggle: "侧边栏面板磨砂",
+      panelsHint: "面板本体、标签栏、底部工作台、改动视图、任务图与浮动窗等大面积表面，变成与右侧会话面板同款的磨砂。",
+      deepToggle: "深层玻璃（卡片 / 列表）",
+      deepHint: "连侧边栏内部的卡片、列表、编辑器等嵌套表面也一起玻璃化。透出的桌面内容更多，文字对比度会下降；觉得累眼就关掉。",
       strengthTitle: "强度",
       strengthIntro: "强度越低越透（玻璃感越强），越高越接近原来的不透明面板。",
       presetFrostTitle: "磨砂",
@@ -144,10 +294,17 @@ body[data-dsh-desktop-platform="darwin"][data-dsh-desktop-material="transparent"
     const en = {
       nav: "Vibrancy",
       title: "Vibrancy",
-      intro: "Tune the glass strength of the conversation pane. Changes apply instantly — no restart and no console needed.",
+      intro: "Tune the glass strength of the conversation pane and the sidebar. Changes apply instantly — no restart and no console needed.",
       appearanceTitle: "Appearance",
       appearanceIntro: "Replaces the opaque conversation pane with a translucent tint so the desktop behind the window shows through.",
       enable: "Enable vibrancy",
+      sidebarTitle: "Sidebar (better-sidebar)",
+      sidebarIntro: "Lets the third-party sidebar plugin use the same glass. Both levels have their own switch and follow the master switch and strength above.",
+      sidebarMissing: "dsh-better-sidebar is not present right now — these switches have no effect at the moment.",
+      panelsToggle: "Sidebar panel glass",
+      panelsHint: "Frosts the large surfaces — panel body, tab strip, bottom workbench, changes view, task graph and floating windows — to match the conversation pane.",
+      deepToggle: "Deep glass (cards / lists)",
+      deepHint: "Also turn the nested surfaces inside the sidebar into glass (cards, lists, inline editors). More of the desktop shows through and text contrast drops; switch it off if it tires your eyes.",
       strengthTitle: "Strength",
       strengthIntro: "Lower is more transparent (more glass), higher is closer to the original opaque pane.",
       presetFrostTitle: "Frosted",
@@ -167,11 +324,13 @@ body[data-dsh-desktop-platform="darwin"][data-dsh-desktop-material="transparent"
     };
 
     /* =====================================================================
-       State (single source of truth for both the stylesheet and the UI)
+       State (single source of truth for both the stylesheets and the UI)
        ===================================================================== */
 
     const TINT_KEY = "dsh-vibrancy-skin:tint";
     const ENABLED_KEY = "dsh-vibrancy-skin:enabled";
+    const PANELS_KEY = "dsh-vibrancy-skin:panels";
+    const DEEP_KEY = "dsh-vibrancy-skin:deep";
     const DEFAULT_TINT = "40%";
 
     const PRESETS = [
@@ -179,6 +338,8 @@ body[data-dsh-desktop-platform="darwin"][data-dsh-desktop-material="transparent"
       { id: "balanced", tint: DEFAULT_TINT, title: "presetBalancedTitle", body: "presetBalancedBody" },
       { id: "solid", tint: "62%", title: "presetSolidTitle", body: "presetSolidBody" },
     ];
+
+    const SIDEBAR_ANCHOR = "[data-dsh-better-sidebar]";
 
     function readStore(key) {
       try {
@@ -215,6 +376,11 @@ body[data-dsh-desktop-platform="darwin"][data-dsh-desktop-material="transparent"
 
     const state = {
       enabled: readStore(ENABLED_KEY) !== "0",
+      /* Sidebar frost is opt-out: it is part of the look, so a fresh profile
+         gets it. Deep glass is opt-in: it trades text contrast for more
+         transparency, so it must be asked for. */
+      panels: readStore(PANELS_KEY) !== "0",
+      deep: readStore(DEEP_KEY) === "1",
       tint: normalizeTint(readStore(TINT_KEY)) ?? DEFAULT_TINT,
     };
 
@@ -225,6 +391,8 @@ body[data-dsh-desktop-platform="darwin"][data-dsh-desktop-material="transparent"
       if (snapshot === null) {
         snapshot = Object.freeze({
           enabled: state.enabled,
+          panels: state.panels,
+          deep: state.deep,
           tint: state.tint,
           defaultTint: DEFAULT_TINT,
           presets: PRESETS.map((preset) => preset.tint),
@@ -252,7 +420,7 @@ body[data-dsh-desktop-platform="darwin"][data-dsh-desktop-material="transparent"
     }
 
     /* =====================================================================
-       Stylesheet + tint plumbing
+       Stylesheets + tint plumbing
        ===================================================================== */
 
     function whenBodyReady(fn) {
@@ -267,30 +435,37 @@ body[data-dsh-desktop-platform="darwin"][data-dsh-desktop-material="transparent"
       fn();
     }
 
-    function installStylesheet() {
+    /* Each switch is the presence of its own <style> element. Removing a
+       sheet restores the upstream look exactly, with zero extra CSS: forcing
+       a 100% tint instead would leave .dshDesktopConversationSurface
+       transparent while only the conversation panel repaints, so any other
+       main-slot panel would leak the window material. It also keeps the
+       three features independent — turning the sidebar off cannot perturb
+       the pane, and vice versa. */
+    const SHEETS = [
+      { id: STYLE_ID, css: CSS_CONTENT, wanted: () => state.enabled },
+      { id: PANEL_STYLE_ID, css: PANEL_CSS_CONTENT, wanted: () => state.enabled && state.panels },
+      { id: DEEP_STYLE_ID, css: DEEP_CSS_CONTENT, wanted: () => state.enabled && state.deep },
+    ];
+
+    function toggleSheet(id, css, wanted) {
+      const existing = document.getElementById(id);
+      if (!wanted) {
+        if (existing !== null) existing.remove();
+        return false;
+      }
+      if (existing !== null) return true;
       const host = document.head || document.documentElement;
       if (!host) return false;
-      if (document.getElementById(STYLE_ID) !== null) return true;
       const style = document.createElement("style");
-      style.id = STYLE_ID;
-      style.textContent = CSS_CONTENT;
+      style.id = id;
+      style.textContent = css;
       host.appendChild(style);
       return true;
     }
 
-    function removeStylesheet() {
-      const style = document.getElementById(STYLE_ID);
-      if (style !== null) style.remove();
-    }
-
-    /* The "enabled" switch is the presence of the stylesheet. Removing it
-       restores the upstream look exactly, with zero extra CSS: forcing a
-       100% tint instead would leave .dshDesktopConversationSurface
-       transparent while only the conversation panel repaints, so any other
-       main-slot panel would leak the window material. */
-    function syncStylesheet() {
-      if (state.enabled) installStylesheet();
-      else removeStylesheet();
+    function syncStylesheets() {
+      for (const sheet of SHEETS) toggleSheet(sheet.id, sheet.css, sheet.wanted());
     }
 
     /* Inline custom properties beat every selector rule, so tuning only has
@@ -320,11 +495,29 @@ body[data-dsh-desktop-platform="darwin"][data-dsh-desktop-material="transparent"
     function setEnabled(value) {
       state.enabled = value !== false;
       writeStore(ENABLED_KEY, state.enabled ? "1" : "0");
-      syncStylesheet();
+      syncStylesheets();
       applyTintInline();
       emit();
       console.info(`[dsh-vibrancy-skin] enabled = ${state.enabled}`);
       return state.enabled;
+    }
+
+    function setPanels(value) {
+      state.panels = value !== false;
+      writeStore(PANELS_KEY, state.panels ? "1" : "0");
+      syncStylesheets();
+      emit();
+      console.info(`[dsh-vibrancy-skin] sidebar panels = ${state.panels}`);
+      return state.panels;
+    }
+
+    function setDeep(value) {
+      state.deep = value !== false;
+      writeStore(DEEP_KEY, state.deep ? "1" : "0");
+      syncStylesheets();
+      emit();
+      console.info(`[dsh-vibrancy-skin] deep glass = ${state.deep}`);
+      return state.deep;
     }
 
     /* =====================================================================
@@ -339,6 +532,17 @@ body[data-dsh-desktop-platform="darwin"][data-dsh-desktop-material="transparent"
 
     function useSkinState() {
       return react.useSyncExternalStore(subscribe, getState, getState);
+    }
+
+    function hasBetterSidebar() {
+      try {
+        return (
+          typeof document.querySelector === "function" &&
+          document.querySelector(SIDEBAR_ANCHOR) !== null
+        );
+      } catch {
+        return false;
+      }
     }
 
     function SkinChoice({ t, title, body, badge, selected, onSelect }) {
@@ -375,21 +579,38 @@ body[data-dsh-desktop-platform="darwin"][data-dsh-desktop-material="transparent"
       });
     }
 
-    function SkinToggle({ t, checked, onChange }) {
+    function SkinToggle({ label, checked, disabled, onChange }) {
       const labelId = react.useId();
       return jsxs("div", {
         className: "dshDesktopSettingsToggleRow",
         children: [
-          jsx("span", { className: "dshDesktopSettingsToggleLabel", id: labelId, children: t("enable") }),
+          jsx("span", { className: "dshDesktopSettingsToggleLabel", id: labelId, children: label }),
           jsx("button", {
             type: "button",
             role: "switch",
             className: "dshDesktopSettingsToggle",
             "aria-checked": checked,
             "aria-labelledby": labelId,
+            disabled: disabled === true,
             onClick: () => onChange(!checked),
             children: jsx("span", { className: "dshDesktopSettingsToggleKnob", "aria-hidden": "true" }),
           }),
+        ],
+      });
+    }
+
+    function group(titleId, title, intro, body) {
+      return jsxs("section", {
+        className: "dshDesktopSettingsGroup",
+        "aria-labelledby": titleId,
+        children: [
+          jsx("div", {
+            children: [
+              jsx("h3", { id: titleId, children: title }),
+              intro !== undefined && jsx("p", { className: "dshDesktopSettingsGroupIntro", children: intro }),
+            ],
+          }),
+          body,
         ],
       });
     }
@@ -420,6 +641,8 @@ body[data-dsh-desktop-platform="darwin"][data-dsh-desktop-material="transparent"
         document.body.dataset.dshDesktopPlatform === "darwin" &&
         document.body.dataset.dshDesktopMaterial === "transparent";
 
+      const sidebar = hasBetterSidebar();
+
       return jsxs("div", {
         className: "dshDesktopSettings",
         children: [
@@ -427,94 +650,104 @@ body[data-dsh-desktop-platform="darwin"][data-dsh-desktop-material="transparent"
             className: "dshDesktopSettingsHeader",
             children: [jsx("h2", { children: t("title") }), jsx("p", { children: t("intro") })],
           }),
-          !active &&
-            jsx("p", { className: "dshDesktopSettingsNotice", children: t("inactive") }),
-          jsxs("section", {
-            className: "dshDesktopSettingsGroup",
-            "aria-labelledby": "dsh-vibrancy-appearance-title",
-            children: [
-              jsx("div", {
-                children: [
-                  jsx("h3", { id: "dsh-vibrancy-appearance-title", children: t("appearanceTitle") }),
-                  jsx("p", { className: "dshDesktopSettingsGroupIntro", children: t("appearanceIntro") }),
-                ],
+          !active && jsx("p", { className: "dshDesktopSettingsNotice", children: t("inactive") }),
+
+          group("dsh-vibrancy-appearance-title", t("appearanceTitle"), t("appearanceIntro"),
+            jsx("div", {
+              className: "dshDesktopSettingsList",
+              children: jsx(SkinToggle, {
+                label: t("enable"),
+                checked: skin.enabled,
+                onChange: (next) => setEnabled(next),
               }),
-              jsx(SkinToggle, { t, checked: skin.enabled, onChange: (next) => setEnabled(next) }),
-            ],
-          }),
-          jsxs("section", {
-            className: "dshDesktopSettingsGroup",
-            "aria-labelledby": "dsh-vibrancy-strength-title",
-            children: [
-              jsx("div", {
-                children: [
-                  jsx("h3", { id: "dsh-vibrancy-strength-title", children: t("strengthTitle") }),
-                  jsx("p", { className: "dshDesktopSettingsGroupIntro", children: t("strengthIntro") }),
-                ],
-              }),
-              jsx("div", {
-                className: "dshDesktopSettingsList",
-                role: "radiogroup",
-                "aria-labelledby": "dsh-vibrancy-strength-title",
-                children: PRESETS.map((preset) =>
-                  jsx(
-                    SkinChoice,
-                    {
-                      t,
-                      title: t(preset.title),
-                      body: t(preset.body),
-                      badge: preset.tint,
-                      selected: skin.enabled && skin.tint === preset.tint,
-                      onSelect: () => setTint(preset.tint),
-                    },
-                    preset.id,
-                  ),
+            }),
+          ),
+
+          group("dsh-vibrancy-sidebar-title", t("sidebarTitle"), t("sidebarIntro"),
+            jsxs("div", {
+              children: [
+                !sidebar && jsx("p", { className: "dshDesktopSettingsNotice", children: t("sidebarMissing") }),
+                jsxs("div", {
+                  className: "dshDesktopSettingsList",
+                  children: [
+                    jsx(SkinToggle, {
+                      label: t("panelsToggle"),
+                      checked: skin.enabled && skin.panels,
+                      disabled: !skin.enabled,
+                      onChange: (next) => setPanels(next),
+                    }),
+                    jsx("p", { className: "dshDesktopSettingsHint", children: t("panelsHint") }),
+                    jsx(SkinToggle, {
+                      label: t("deepToggle"),
+                      checked: skin.enabled && skin.deep,
+                      disabled: !skin.enabled,
+                      onChange: (next) => setDeep(next),
+                    }),
+                    jsx("p", { className: "dshDesktopSettingsHint", children: t("deepHint") }),
+                  ],
+                }),
+              ],
+            }),
+          ),
+
+          group("dsh-vibrancy-strength-title", t("strengthTitle"), t("strengthIntro"),
+            jsx("div", {
+              className: "dshDesktopSettingsList",
+              role: "radiogroup",
+              "aria-labelledby": "dsh-vibrancy-strength-title",
+              children: PRESETS.map((preset) =>
+                jsx(
+                  SkinChoice,
+                  {
+                    t,
+                    title: t(preset.title),
+                    body: t(preset.body),
+                    badge: preset.tint,
+                    selected: skin.enabled && skin.tint === preset.tint,
+                    onSelect: () => setTint(preset.tint),
+                  },
+                  preset.id,
                 ),
-              }),
-            ],
-          }),
-          jsxs("section", {
-            className: "dshDesktopSettingsGroup",
-            "aria-labelledby": "dsh-vibrancy-fine-title",
-            children: [
-              jsx("div", {
-                children: [
-                  jsx("h3", { id: "dsh-vibrancy-fine-title", children: t("fineTitle") }),
-                  jsx("p", { className: "dshDesktopSettingsGroupIntro", children: t("fineIntro") }),
-                ],
-              }),
-              jsxs("div", {
-                className: "dshDesktopSettingsForm",
-                children: [
-                  jsx("label", {
-                    className: "dshDesktopSettingsField",
-                    children: [
-                      jsx("span", { children: t("fineLabel") }),
-                      jsx("input", {
-                        className: "dshDesktopSettingsInput",
-                        type: "number",
-                        min: "0",
-                        max: "100",
-                        step: "1",
-                        value: draft,
-                        disabled: !skin.enabled,
-                        onChange: (event) => commit(event.target.value),
-                        onBlur: () => setDraft(String(numeric)),
-                      }),
-                    ],
-                  }),
-                  jsx("button", {
-                    type: "button",
-                    className: "dshDesktopSettingsButton",
-                    disabled: !skin.enabled || skin.tint === skin.defaultTint,
-                    onClick: () => setTint(""),
-                    children: t("reset"),
-                  }),
-                ],
-              }),
-              jsx("p", { className: "dshDesktopSettingsHint", children: t("fineHint") }),
-            ],
-          }),
+              ),
+            }),
+          ),
+
+          group("dsh-vibrancy-fine-title", t("fineTitle"), t("fineIntro"),
+            jsxs("div", {
+              children: [
+                jsxs("div", {
+                  className: "dshDesktopSettingsForm",
+                  children: [
+                    jsx("label", {
+                      className: "dshDesktopSettingsField",
+                      children: [
+                        jsx("span", { children: t("fineLabel") }),
+                        jsx("input", {
+                          className: "dshDesktopSettingsInput",
+                          type: "number",
+                          min: "0",
+                          max: "100",
+                          step: "1",
+                          value: draft,
+                          disabled: !skin.enabled,
+                          onChange: (event) => commit(event.target.value),
+                          onBlur: () => setDraft(String(numeric)),
+                        }),
+                      ],
+                    }),
+                    jsx("button", {
+                      type: "button",
+                      className: "dshDesktopSettingsButton",
+                      disabled: !skin.enabled || skin.tint === skin.defaultTint,
+                      onClick: () => setTint(""),
+                      children: t("reset"),
+                    }),
+                  ],
+                }),
+                jsx("p", { className: "dshDesktopSettingsHint", children: t("fineHint") }),
+              ],
+            }),
+          ),
         ],
       });
     }
@@ -531,25 +764,33 @@ body[data-dsh-desktop-platform="darwin"][data-dsh-desktop-material="transparent"
           default: DEFAULT_TINT,
           setTint,
           setEnabled,
+          setPanels,
+          setDeep,
           getState,
           subscribe,
           reset: () => setTint(""),
+          resetAll: () => {
+            setTint("");
+            setPanels(true);
+            setDeep(false);
+            setEnabled(true);
+          },
         };
       } catch {}
     }
 
     function apply(ctx) {
-      /* The stylesheet is already installed by the factory body below; this
-         is just a reconciliation in case the stylesheet was claimed and
-         removed by a module reload. */
-      syncStylesheet();
+      /* The stylesheets are already installed by the factory body below; this
+         is just a reconciliation in case they were claimed and removed by a
+         module reload. */
+      syncStylesheets();
 
       whenBodyReady(() => {
         applyTintInline();
         expose();
         const body = document.body;
         console.info(
-          `[dsh-vibrancy-skin] applied — enabled ${state.enabled}, tint ${state.tint}, theme ${body && body.dataset.dsDarkTheme !== undefined ? "dark" : "light"}, material ${(body && body.dataset.dshDesktopMaterial) || "n/a"}`,
+          `[dsh-vibrancy-skin] applied — enabled ${state.enabled}, sidebar panels ${state.panels}, deep glass ${state.deep}, tint ${state.tint}, theme ${body && body.dataset.dsDarkTheme !== undefined ? "dark" : "light"}, material ${(body && body.dataset.dshDesktopMaterial) || "n/a"}`,
         );
       });
 
@@ -570,7 +811,10 @@ body[data-dsh-desktop-platform="darwin"][data-dsh-desktop-material="transparent"
       );
 
       return () => {
-        removeStylesheet();
+        for (const sheet of SHEETS) {
+          const style = document.getElementById(sheet.id);
+          if (style !== null) style.remove();
+        }
         try {
           delete window.dshVibrancySkin;
         } catch {}
@@ -582,7 +826,7 @@ body[data-dsh-desktop-platform="darwin"][data-dsh-desktop-material="transparent"
        already in place when the desktop shell installs its own stylesheet.
        Doing it here and not in apply() also means the skin keeps working even
        if the settings UI never comes up. */
-    syncStylesheet();
+    syncStylesheets();
     applyTintInline();
 
     exports.inject = ["slots", "locale"];

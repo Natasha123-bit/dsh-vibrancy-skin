@@ -6,7 +6,8 @@ set -uo pipefail
 
 P="$HOME/.dsh/profiles/desktop"
 PKG="$P/node_modules/dsh-vibrancy-skin"
-SRC="/Users/leixiaokang/Documents/DSH-Default/dsh-vibrancy-skin"
+# 自定位：脚本所在目录就是源码目录（2026-10-04 迁到 DSH-Projects 后不再写死绝对路径）
+SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LOGDIR="$HOME/Library/Application Support/DSH Desktop/logs/host"
 
 ok()   { printf '  \033[32m✓\033[0m %s\n' "$1"; }
@@ -89,7 +90,39 @@ done
 echo "== 7. HTTP probing is not usable here =="
 echo "  /plugins/<pkg>/client.js is token-guarded even on loopback: unauthenticated curl gets 403."
 echo "  Real confirmation is the renderer console line:"
-echo "    [dsh-vibrancy-skin] applied - enabled true, tint 40%, theme ..., material transparent"
+echo "    [dsh-vibrancy-skin] applied — enabled true, sidebar panels true, deep glass false,"
+echo "                                            tint 40%, theme ..., material transparent"
 echo "  Open it with Cmd+Opt+I; if absent, the client half was not served."
-echo "  UI confirmation: Settings -> 磨砂玻璃 / Vibrancy (a sibling of the built-in Desktop page)."
+echo "  UI confirmation: Settings -> 磨砂玻璃 / Vibrancy (a sibling of the built-in Desktop page),"
+echo "  with the switches '侧边栏面板磨砂' (default on) and '深层玻璃' (default off)."
+
+echo "== 8. installed client half carries all three sheets =="
+for marker in dsh-vibrancy-skin-styles dsh-vibrancy-skin-panel-styles dsh-vibrancy-skin-deep-styles; do
+  grep -q "$marker" "$PKG/client.js" && ok "sheet id $marker" || bad "sheet id $marker missing"
+done
+grep -q 'data-dsh-better-sidebar' "$PKG/client.js" \
+  && ok "sidebar scoped to [data-dsh-better-sidebar] (plugin-owned marker, hash-proof)" \
+  || bad "sidebar scope anchor missing"
+grep -q 'dshDesktopRightbarSurface\[data-rightbar-col\]' "$PKG/client.js" \
+  && ok "sidebar also scoped to the app's third column (where the visible dock lives)" \
+  || bad "rightbar-column anchor missing (the visible sidebar is painted by the app's dock)"
+grep -q 'data-dockkit-host="dock"' "$PKG/client.js" \
+  && ok "sidebar also scoped to the dockkit dock cell" \
+  || bad "dockkit anchor missing"
+grep -qE '\[class\*="_tabHost_"\]' "$PKG/client.js" \
+  && ok "dock tab host background pinned explicitly" \
+  || bad "dock tab host rule missing"
+grep -qE '\-\-dsh-vib-bg-base-solid:[[:space:]]*var\(--dsw-alias-bg-base\)' "$PKG/client.js" \
+  && ok "opaque --dsw-alias-bg-base snapshot captured on <body>" \
+  || bad "opaque snapshot of --dsw-alias-bg-base missing (dialogs would stay see-through)"
+grep -qE ':is\(dialog, \[role="dialog"\], \[role="alertdialog"\]\)' "$PKG/client.js" \
+  && ok "dialog-like overlays get the opaque sheet back (dsh-cost-meter 费用明细 fix)" \
+  || bad "overlay restore rule missing — dialog-style panels render transparent"
+grep -qE 'backdrop-filter[[:space:]]*:' "$PKG/client.js" \
+  && bad "a backdrop-filter declaration is present — must never be used (grey fog on a transparent vibrancy window)" \
+  || ok "no backdrop-filter declaration (comments explaining why are fine)"
+node -e '
+const v = require("'"$PKG"'/package.json").version;
+console.log((v === "1.3.2" ? "\u2713" : "\u2717") + " installed version = " + v + (v === "1.3.2" ? "" : " (expected 1.3.2)"));
+' 2>&1 | sed 's/^/  /'
 

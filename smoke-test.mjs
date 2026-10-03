@@ -6,14 +6,14 @@
  * This proves, without a browser and without restarting DSH Desktop:
  *
  *   1. the module registers, exports `apply`, and declares its cordis deps;
- *   2. the stylesheet is installed at materialization — i.e. during the
+ *   2. the stylesheets are installed at materialization — i.e. during the
  *      `dsh.client.immediately` prefetch tier, before React mounts, and even
  *      if `apply()` is never called;
  *   3. `apply()` survives head parsing (document.body === null);
- *   4. the tint/enabled state machine persists and re-applies correctly;
+ *   4. the tint/enabled/sidebar state machine persists and re-applies correctly;
  *   5. the settings section is registered on the native `settings.section`
  *      slot with a native-shaped, fully localized element tree;
- *   6. the stylesheet still declares material properties only.
+ *   6. all three stylesheets still declare material properties only.
  *
  * Run: node smoke-test.mjs
  */
@@ -94,6 +94,9 @@ function makeEnv({ withBody }) {
     documentElement: { appendChild: (el) => headChildren.push(el) },
     body: withBody ? body : null,
     getElementById: (id) => headChildren.find((el) => el.id === id) ?? null,
+    /* Pretend dsh-better-sidebar is mounted; one section overrides this back
+       to null to prove the "sidebar missing" path. */
+    querySelector: () => ({ present: true }),
     createElement: () => {
       const el = { id: "", textContent: "", remove: () => headChildren.splice(headChildren.indexOf(el), 1) };
       return el;
@@ -245,7 +248,13 @@ console.log("B. materialization (prefetch tier) installs the skin without apply(
 {
   const env = makeEnv({ withBody: false });
   env.module();
-  check("stylesheet injected into <head> by the factory body", env.headChildren.length === 1 && env.headChildren[0].id === "dsh-vibrancy-skin-styles");
+  check(
+    "core sheet injected into <head> by the factory body",
+    env.headChildren.length === 2 && env.headChildren[0].id === "dsh-vibrancy-skin-styles",
+    env.headChildren.map((e) => e.id).join(", "),
+  );
+  check("sidebar sheet injected too (on by default)", env.headChildren[1].id === "dsh-vibrancy-skin-panel-styles");
+  check("deep sheet stays off until asked for", env.document.getElementById("dsh-vibrancy-skin-deep-styles") === null);
   check("no apply() needed", env.win.dshVibrancySkin === undefined);
   check("body untouched while it does not exist", env.props.size === 0);
 }
@@ -312,6 +321,7 @@ console.log("F. setEnabled() is the presence of the stylesheet");
   check("stylesheet present", env.document.getElementById("dsh-vibrancy-skin-styles") !== null);
   check("setEnabled(false) returns false", api.setEnabled(false) === false);
   check("stylesheet removed → upstream look restored", env.document.getElementById("dsh-vibrancy-skin-styles") === null);
+  check("sidebar sheet is gated by the master switch too", env.document.getElementById("dsh-vibrancy-skin-panel-styles") === null);
   check("persisted off", env.store.get("dsh-vibrancy-skin:enabled") === "0");
   check("setEnabled(true) restores it", api.setEnabled(true) === true && env.document.getElementById("dsh-vibrancy-skin-styles") !== null);
   // a fresh load must honour the stored switch
@@ -365,13 +375,28 @@ console.log("H. the section renders a native-shaped, localized tree");
 
   check("root uses the native settings shell class", classNameOf(tree) === "dshDesktopSettings");
   check("has a page header", !!byClass(tree, "dshDesktopSettingsHeader"));
-  check("3 groups", nodes.filter((n) => classNameOf(n) === "dshDesktopSettingsGroup").length === 3);
+  check("4 groups", nodes.filter((n) => classNameOf(n) === "dshDesktopSettingsGroup").length === 4);
   check("native switch row", !!byClass(tree, "dshDesktopSettingsToggleRow"));
-  const toggle = byClass(tree, "dshDesktopSettingsToggle");
+  const toggles = nodes.filter(
+    (n) => classNameOf(n) === "dshDesktopSettingsToggle" && n.type === "button",
+  );
+  const toggle = toggles[0];
   check('switch is a role=switch button', toggle?.type === "button" && toggle?.props?.role === "switch");
   check("switch reflects enabled state", toggle?.props?.["aria-checked"] === true);
+  check(
+    "3 switches: master + sidebar panels + deep glass",
+    toggles.length === 3,
+    `${toggles.length} switch(es)`,
+  );
+  check(
+    "sidebar switches default to panels on / deep off",
+    toggles[1]?.props?.["aria-checked"] === true && toggles[2]?.props?.["aria-checked"] === false,
+  );
+  check("sidebar switches are enabled while the skin is on", toggles[1]?.props?.disabled === false);
   check("has a native segmented list", !!byClass(tree, "dshDesktopSettingsList"));
-  const list = byClass(tree, "dshDesktopSettingsList");
+  const list = nodes.find(
+    (n) => classNameOf(n) === "dshDesktopSettingsList" && n.props.role === "radiogroup",
+  );
   const choices = list.props.children;
   check("3 preset rows", choices.length === 3);
   check(
@@ -408,7 +433,7 @@ console.log("H. the section renders a native-shaped, localized tree");
   env.react.beginRender();
   calls.slotRegister[0].component({ t: tEn });
   check("no missing locale key in en", missingEn.length === 0, missingEn.join(", "));
-  check("no CSS is injected by the section itself", env.headChildren.length === 1);
+  check("no CSS is injected by the section itself", env.headChildren.length === 2);
 }
 
 console.log("I. does not touch the body when the window is not frosted");
@@ -425,23 +450,206 @@ console.log("I. does not touch the body when the window is not frosted");
   check("warns that the material is not transparent", !!byClass(tree, "dshDesktopSettingsNotice"));
 }
 
-console.log("J. stylesheet touches material properties only");
+console.log("J. every stylesheet touches material properties only");
 {
+  const WINDOW_SCOPE =
+    'body[data-dsh-desktop-platform="darwin"][data-dsh-desktop-material="transparent"]';
+
+  const parseRules = (css) => {
+    const stripped = css.replace(/\/\*[\s\S]*?\*\//g, "");
+    /* Top-level comma split only: selectors like
+       ':is(dialog, [role="dialog"], [role="alertdialog"])' contain commas that
+       must not be mistaken for selector-list separators. */
+    const splitSelectors = (text) => {
+      const out = [];
+      let depth = 0;
+      let current = "";
+      for (const ch of text) {
+        if (ch === "(" || ch === "[") depth += 1;
+        else if (ch === ")" || ch === "]") depth -= 1;
+        if (ch === "," && depth === 0) {
+          out.push(current);
+          current = "";
+          continue;
+        }
+        current += ch;
+      }
+      out.push(current);
+      return out.map((s) => s.trim()).filter((s) => s.length > 0);
+    };
+    const rules = [];
+    for (const m of stripped.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+      rules.push({ selectors: splitSelectors(m[1]), body: m[2] });
+    }
+    return { stripped, rules };
+  };
+
+  const auditSheet = (label, css, allowed) => {
+    const { stripped, rules } = parseRules(css);
+    check(
+      `${label}: every selector is scoped to darwin + material=transparent`,
+      rules.length > 0 &&
+        rules.every((r) => r.selectors.every((s) => s.startsWith(WINDOW_SCOPE))),
+      `${rules.length} rule(s)`,
+    );
+    const props = [
+      ...new Set(rules.flatMap((r) => [...r.body.matchAll(/([a-zA-Z-][a-zA-Z0-9-]*)\s*:\s/g)].map((m) => m[1]))),
+    ].sort();
+    check(`${label}: material-only declarations`, JSON.stringify(props) === JSON.stringify(allowed), props.join(", "));
+    check(`${label}: no backdrop-filter`, !/backdrop-filter\s*:/.test(stripped));
+    check(
+      `${label}: no layout property`,
+      !/\b(grid-template|width|height|display|position|border-radius|padding|margin|overflow)\s*:/.test(stripped),
+    );
+    check(`${label}: braces balanced`, (stripped.match(/{/g) || []).length === (stripped.match(/}/g) || []).length);
+    return stripped;
+  };
+
   const env = makeEnv({ withBody: true });
   env.module();
-  const css = env.headChildren[0].textContent;
-  const stripped = css.replace(/\/\*[\s\S]*?\*\//g, "");
-  const props = [...new Set([...stripped.matchAll(/([a-z-]+)\s*:\s/g)].map((m) => m[1]))].sort();
   check(
-    "declared properties are exactly background + the three custom properties",
-    JSON.stringify(props) === JSON.stringify(["--dsh-vib-pane", "--dsh-vib-tint-strength", "--dsw-alias-bg-base", "background"]),
-    props.join(", "),
+    "materialization installs exactly the two default sheets",
+    env.headChildren.length === 2,
+    env.headChildren.map((e) => e.id).join(", "),
   );
-  check("no backdrop-filter declaration", !/backdrop-filter\s*:/.test(stripped));
-  check("no layout property declared", !/\b(grid-template|width|height|display|position|border-radius|padding|margin|overflow)\s*:/.test(stripped));
-  check("scoped to darwin + material=transparent (4 rules)", (css.match(/data-dsh-desktop-platform="darwin"\]\[data-dsh-desktop-material="transparent"\]/g) || []).length === 4);
-  check("tint never references --dsw-alias-bg-base (no cycle)", !/--dsh-vib-pane:\s*color-mix\([^;]*--dsw-alias-bg-base/.test(css));
-  check("braces balanced", (stripped.match(/{/g) || []).length === (stripped.match(/}/g) || []).length);
+  const core = env.headChildren[0];
+  const panel = env.headChildren[1];
+  auditSheet("sheet 1 core", core.textContent, [
+    "--dsh-vib-bg-base-solid",
+    "--dsh-vib-bg-layer-1-solid",
+    "--dsh-vib-pane",
+    "--dsh-vib-tint-strength",
+    "--dsw-alias-bg-base",
+    "--dsw-alias-bg-layer-1",
+    "background",
+  ]);
+  auditSheet("sheet 2 sidebar", panel.textContent, ["--dsw-alias-bg-base", "background"]);
+  check(
+    "sheet 2 is anchored on the sidebar's own attribute marker, not a class hash",
+    panel.textContent.includes("[data-dsh-better-sidebar]"),
+  );
+  check(
+    "sheet 2 reuses the tint variable exported by sheet 1",
+    panel.textContent.includes("var(--dsh-vib-pane)"),
+  );
+  check(
+    "sheet 2 also covers the app's third column (visible sidebar lives there)",
+    panel.textContent.includes(".dshDesktopRightbarSurface[data-rightbar-col]"),
+  );
+  check(
+    "sheet 2 also covers the dockkit dock (surface painted by the app's dock)",
+    panel.textContent.includes('[data-dockkit-host="dock"]'),
+  );
+  check(
+    "sheet 2 paints the dock tab host explicitly (defends against hash churn)",
+    /\[class\*="_tabHost_"\]\s*\{[\s\S]*?background:\s*var\(--dsh-vib-pane\)/.test(
+      panel.textContent,
+    ),
+  );
+  check(
+    "tint never references --dsw-alias-bg-base (no cycle)",
+    !/--dsh-vib-pane:\s*color-mix\([^;]*--dsw-alias-bg-base/.test(core.textContent),
+  );
+  check(
+    "sheet 1 snapshots the upstream opaque layers on <body> (before any retint)",
+    /--dsh-vib-bg-base-solid:\s*var\(--dsw-alias-bg-base\)/.test(core.textContent) &&
+      /--dsh-vib-bg-layer-1-solid:\s*var\(--dsw-alias-bg-layer-1\)/.test(core.textContent),
+  );
+  check(
+    "sheet 1 restores the opaque sheet for dialog-like overlays",
+    /:is\(dialog,\s*\[role="dialog"\],\s*\[role="alertdialog"\]\)\s*\{[\s\S]*?--dsw-alias-bg-base:\s*var\(--dsh-vib-bg-base-solid\)/.test(
+      core.textContent,
+    ),
+  );
+  check(
+    "the overlay restore is not scoped to one pane (portals may move the dialog)",
+    /^body\[data-dsh-desktop-platform="darwin"\]\[data-dsh-desktop-material="transparent"\] :is\(dialog/m.test(
+      core.textContent,
+    ),
+  );
+
+  const deepEnv = makeEnv({ withBody: true });
+  deepEnv.store.set("dsh-vibrancy-skin:deep", "1");
+  deepEnv.module();
+  const deep = deepEnv.headChildren.find((e) => e.id === "dsh-vibrancy-skin-deep-styles");
+  check("sheet 3 installs when deep glass is on", !!deep);
+  auditSheet("sheet 3 deep", deep.textContent, ["--dsw-alias-bg-layer-1"]);
+  check(
+    "sheet 3 only retints the nested surface token",
+    !/background\s*:/.test(deep.textContent.replace(/\/\*[\s\S]*?\*\//g, "")),
+  );
+  check(
+    "sheet 3 uses the same three anchors as sheet 2",
+    deep.textContent.includes("[data-dsh-better-sidebar]") &&
+      deep.textContent.includes(".dshDesktopRightbarSurface[data-rightbar-col]") &&
+      deep.textContent.includes('[data-dockkit-host="dock"]'),
+  );
+}
+
+console.log("K. the two sidebar switches gate their own sheet");
+{
+  const env = makeEnv({ withBody: true });
+  const exported = env.module();
+  exported.apply(makeCtx({}).ctx);
+  const api = env.win.dshVibrancySkin;
+  const has = (id) => env.document.getElementById(id) !== null;
+
+  check("panel sheet on by default", has("dsh-vibrancy-skin-panel-styles"));
+  check("deep sheet off by default", !has("dsh-vibrancy-skin-deep-styles"));
+  check(
+    "setPanels(false) removes only the sidebar panel sheet",
+    api.setPanels(false) === false && !has("dsh-vibrancy-skin-panel-styles") && has("dsh-vibrancy-skin-styles"),
+  );
+  check("panels choice persisted", env.store.get("dsh-vibrancy-skin:panels") === "0");
+  check(
+    "setDeep(true) adds only the deep sheet",
+    api.setDeep(true) === true && has("dsh-vibrancy-skin-deep-styles") && !has("dsh-vibrancy-skin-panel-styles"),
+  );
+  check("deep choice persisted", env.store.get("dsh-vibrancy-skin:deep") === "1");
+  check(
+    "getState reports both switches",
+    api.getState().panels === false && api.getState().deep === true,
+  );
+  check("the master switch still controls everything", api.setEnabled(false) === false && env.headChildren.length === 0);
+  check(
+    "and restores the stored combination",
+    api.setEnabled(true) === true && has("dsh-vibrancy-skin-deep-styles") && !has("dsh-vibrancy-skin-panel-styles"),
+  );
+  check(
+    "console banner reports both switches",
+    env.logs.some((l) => l.includes("[dsh-vibrancy-skin] applied") && l.includes("sidebar panels") && l.includes("deep glass")),
+  );
+
+  const fresh = makeEnv({ withBody: true });
+  fresh.store.set("dsh-vibrancy-skin:panels", "0");
+  fresh.store.set("dsh-vibrancy-skin:deep", "1");
+  fresh.module();
+  check(
+    "stored switches survive the next boot",
+    fresh.document.getElementById("dsh-vibrancy-skin-panel-styles") === null &&
+      fresh.document.getElementById("dsh-vibrancy-skin-deep-styles") !== null,
+  );
+}
+
+console.log("L. the sidebar group degrades gracefully without dsh-better-sidebar");
+{
+  const env = makeEnv({ withBody: true });
+  env.document.querySelector = () => null; // plugin not installed
+  const exported = env.module();
+  const { ctx, calls } = makeCtx({});
+  exported.apply(ctx);
+  const { dicts } = calls.localeRegister[0];
+  const t = (key) => dicts.zh[key] ?? key;
+  env.react.beginRender();
+  const tree = calls.slotRegister[0].component({ t });
+  CURRENT_REACT = env.react;
+  const nodes = walk(tree);
+  const notices = nodes.filter((n) => classNameOf(n) === "dshDesktopSettingsNotice");
+  check(
+    "shows the 'sidebar missing' notice",
+    notices.some((n) => n.props.children === dicts.zh.sidebarMissing),
+  );
+  check("still renders all 3 switches", nodes.filter((n) => classNameOf(n) === "dshDesktopSettingsToggle").length === 3);
 }
 
 console.log(failures === 0 ? "\nALL CHECKS PASSED" : `\n${failures} CHECK(S) FAILED`);
