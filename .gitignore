@@ -1,0 +1,7 @@
+# DSH 插件运行产物 / 本机痕迹
+node_modules/
+.DS_Store
+*.log
+
+# 备份目录里指向"活体安装"的软链（不是回滚点，别跟仓库走）
+installed-*

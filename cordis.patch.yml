@@ -1,0 +1,15 @@
+# dsh-vibrancy-skin bundle patch.
+#
+# Mounts this plugin's Node half into any profile that lists
+# "dsh-vibrancy-skin" in dsh.profile.bundles; the profile boot routine merges
+# this patch into its layer stack, and the client module registry then picks up
+# the browser half from the package's "dsh.client" declaration.
+#
+# Kept as a plain, unconditional insert on purpose. An earlier 2026-09-28 run
+# proved this exact shape loads cleanly (no `patch: entry "vibrancy-skin" not
+# found`, stylesheet active), so this file does not add a conditional guard it
+# has never been validated with. Double-mounting is impossible while the
+# profile carries no other mount of this package.
+- insert:
+    - id: vibrancy-skin
+      name: dsh-vibrancy-skin
