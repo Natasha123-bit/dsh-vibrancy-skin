@@ -34,7 +34,18 @@
 - 新增迁前整包快照 `.backup/dsh-vibrancy-skin-pre-migration-v1.3.2-20261004-033509.tar.gz`
   与 profile 侧原文件 `.backup/profile-20261004-033509/{package.json,cordis.patch.yml}`。
 - **插件代码一行未改**：`client.js` md5 迁移前后均为 `83db8447697538981563052b27dc951d`；
-  `node smoke-test.mjs` 112/112、`bash verify.sh` 25 项全绿（切换挂载后复跑）。
+  `node smoke-test.mjs` 112/112、`bash verify.sh` 27 项全绿（切换挂载后复跑；2026-10-04 校正，当时误记 25）。
+
+## 2026-10-04 — 用户验收通过 + 文档计量校正（未改版本号、未改插件代码）
+
+- **v1.3.2 验收通过（用户确认）**：`Cmd+R` 后 dsh-cost-meter「费用明细」面板实心可读、弹层不透明。
+  README §5「弹层可读性」那两行由 `[ ]` 改 `[x]`；清单里其余 9 条 `[ ]` 仍是"顺手扫一眼"级别，不影响已达成效果。
+- **计数漂移校正**：`bash verify.sh` 的真实项数是 **27**（§1 4 + §2 2 + §3 1 + §4 2 + §5 3 + §6 4 + §8 11），
+  文档里写的 `verify.sh 25 项` 一律改正（AGENTS.md 两处、STATE.md 两处、本文件两处）。
+  取证：`.backup/dsh-vibrancy-skin-pre-migration-v1.3.2-20261004-033509.tar.gz` 内的 `verify.sh`
+  与当前逐检查项一致（只多一行自定位注释）→ **27 从 v1.3.2 部署起就成立**；25 是 v1.3.2 **加那 2 条断言之前**的旧值，当时忘记 +2。
+- **路径校正**：旧目录实际在 `~/Documents/DSH-Default/.dsh-vibrancy-skin-old-20261004-033509`（同一父目录下的隐藏目录）。
+- 顺手发现、**未动**（留作待办）：`.backup/LAST_BACKUP_TS` 仍写 `20260928-054614`，没反映 2026-10-04 的迁前备份。
 
 ## v1.3.2 — 2026-10-02 23:57 (+0800)
 
@@ -48,7 +59,8 @@
   （`--dsh-vib-bg-base-solid: var(--dsw-alias-bg-base)`、`--dsh-vib-bg-layer-1-solid: var(--dsw-alias-bg-layer-1)`），
   再对弹层还原：`body[…gate…] :is(dialog, [role="dialog"], [role="alertdialog"])` → 两个 token 恢复上游值。
   刻意**不**写死 `background`、**不**绑定单个第三方面板的作用域（见 README §1.2 的三条取舍）。
-- 门禁：`smoke-test.mjs` **112/112**（新增 3 条断言）、`verify.sh` **25 项全绿**（新增 2 条断言）。
+- 门禁：`smoke-test.mjs` **112/112**（新增 3 条断言）、`verify.sh` **27 项全绿**（新增 2 条断言；
+  2026-10-04 校正，原记「25 项」是漏加这 2 条的旧值，见上方 2026-10-04 一节）。
 - 文档：README 新增 §1.2（弹层为什么不透明）与 §6（插件兼容性校验：desktop 2.0.17 / dsh 0.2.0-rc.2；
   本插件**刻意不声明 `peerDependencies`**，理由见该节）。
 

@@ -15,7 +15,7 @@ DSH Desktop 的**纯 CSS 注入插件**：没有构建步骤、没有依赖、�
 | `package.json` | manifest：`dsh.client.platform` / `dsh.bundle.patch` / `exports["./client"]` / `version` |
 | `cordis.patch.yml` | 插件管理器用的挂载补丁 |
 | `smoke-test.mjs` | 纯静态断言（当前 112 条），改 `client.js` 必跑 |
-| `verify.sh` | 活体安装核对（当前 25 项）：源码↔安装 md5、profile 挂载、宿主日志、sheet 完整性、版本号 |
+| `verify.sh` | 活体安装核对（当前 **27** 项）：源码↔安装 md5、profile 挂载、宿主日志、sheet 完整性、版本号 |
 | `rollback.sh` | 回滚辅助 |
 | `README.md` | 设计不变量 + 逐条实证（§1.x 解释「为什么这样改」） |
 | `STATE.md` | 逐版 delta / 实测记录 / 改过盘上哪些文件 |
@@ -35,7 +35,7 @@ DSH Desktop 的**纯 CSS 注入插件**：没有构建步骤、没有依赖、�
 ## 硬规则
 
 1. **绝不跑 `pnpm install`**（在 profile 里跑过一次并炸出 `ERR_PNPM_UNEXPECTED_STORE`）。挂载靠软链，不靠安装。
-2. 改 `client.js` 后必须两条都绿：`node smoke-test.mjs`（112/112）与 `bash verify.sh`（25 项）；
+2. 改 `client.js` 后必须两条都绿：`node smoke-test.mjs`（112/112）与 `bash verify.sh`（27 项）；
    再确认 `md5 -q client.js` 与 `~/.dsh/profiles/desktop/node_modules/dsh-vibrancy-skin/client.js` 一致。
 3. **禁止 `backdrop-filter`**：在透明 vibrancy 窗口上会变成灰雾（`verify.sh` 有专门断言，写了就红）。
 4. 所有选择器必须挂在**门控 `<body>`** 的属性/类之下，并落在正确的 sheet；总开关必须能整张摘掉
@@ -54,5 +54,10 @@ DSH Desktop 的**纯 CSS 注入插件**：没有构建步骤、没有依赖、�
 
 - 版本 **v1.3.2**，`client.js` md5 `83db8447697538981563052b27dc951d`；git `main`，tag `v1.2.0` / `v1.3.2`，**无远端**。
 - 环境：DSH Desktop **2.0.17** / `@deepseek-ai/dsh*` **0.2.0-rc.2**（本插件对 0.2.x 无需豁免，profile 里没有 `compatibility.json`）。
-- 唯一未闭环项：用户 `Cmd+R` 后肉眼确认 dsh-cost-meter「费用明细」面板已恢复实心可读
-  （README §5 那两条 `[ ]` 待改 `[x]`）。
+- **v1.3.2 验收通过（2026-10-04，用户确认）**：dsh-cost-meter「费用明细」面板实心可读、弹层不透明
+  （README §5 那两条已改 `[x]`）。清单里仍剩 9 条 `[ ]`，属"顺手扫一眼"级别，不影响已达成效果。
+- 计数基线（2026-10-04 实测校正）：`smoke-test.mjs` **112** 条、`verify.sh` **27** 项。
+  此前写的 `verify.sh 25 项` 是 v1.3.2 **加那 2 条断言之前**的旧值，v1.3.2 起真实值一直是 27。
+- 已知、**未动**的陈旧元数据：`.backup/LAST_BACKUP_TS` 仍写 `20260928-054614`（没反映 2026-10-04 迁前备份）；
+  profile 侧 `pnpm-lock.yaml` / `node_modules/.pnpm/lock.yaml` / `.package-map.json` 仍写旧 `link:` 路径
+  （故意不手改，见 STATE.md 迁移段）。

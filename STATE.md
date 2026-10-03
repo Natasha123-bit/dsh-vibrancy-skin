@@ -14,14 +14,27 @@ re-pointed at the new path (old directory kept as a symlink to it). No plugin co
 `client.js` md5 is `83db8447697538981563052b27dc951d` before and after. See `CHANGELOG.md`.
 
 **迁移切换后的复验（2026-10-04 03:3x，切换挂载 + 旧目录改软链之后）**
-- `node smoke-test.mjs` → 112/112；`bash verify.sh` → 25 ✓ / 0 ✗（§1 源码↔安装逐字节一致、
+- `node smoke-test.mjs` → 112/112；`bash verify.sh` → 27 ✓ / 0 ✗（§1 源码↔安装逐字节一致、
   §2 `link:/Users/leixiaokang/Documents/DSH-Projects/dsh-vibrancy-skin`、§4 两条解析路径都指向新仓库、
   §6 宿主日志自切换以来 0 条新行、§8 三张 sheet + 弹层快照/规则断言齐全、installed version = 1.3.2）。
-- 旧目录 `/Users/leixiaokang/Documents/DSH-Default/dsh-vibrancy-skin` 已 `mv` 到
-  `~/.dsh-vibrancy-skin-old-20261004-033509` 并原位置改挂软链 → 新仓库（经旧路径读 `client.js` md5 相同）。
+- 旧目录 `/Users/leixiaokang/Documents/DSH-Default/dsh-vibrancy-skin` 已 `mv` 到**同一父目录下的隐藏目录**
+  `/Users/leixiaokang/Documents/DSH-Default/.dsh-vibrancy-skin-old-20261004-033509`（**不是** `~/` 下——
+  2026-10-04 实测校正），原位置改挂软链 → 新仓库（经旧路径读 `client.js` md5 相同）。
 - 已知陈旧元数据（**故意不手改**）：profile 的 `pnpm-lock.yaml`、`node_modules/.pnpm/lock.yaml`、
   `node_modules/.package-map.json` 仍写着旧 `link:` 路径。因为旧路径现在是有效软链，即便将来真跑一次
   `pnpm install` 也能解析到同一份代码；手改 lockfile 反而有破坏完整性校验的风险（见 AGENTS.md 规则 1）。
+
+**2026-10-04 复核与文档校正（未改一行插件代码，`client.js` md5 仍为 `83db8447697538981563052b27dc951d`）**
+- **用户验收通过**：`Cmd+R` 后 dsh-cost-meter「费用明细」面板实心可读、弹层不透明 → v1.3.2 的弹层修复确认有效；
+  README §5「弹层可读性」那两行由 `[ ]` 改 `[x]`（其余 9 条 `[ ]` 保持未勾，属"顺手扫一眼"级别）。
+- **计数漂移校正**：文档里 6 处 `verify.sh 25 项` 一律改为 **27 项**（AGENTS.md 文件地图 + 硬规则 2、
+  本文件迁移复验段 + v1.3.2 delta、CHANGELOG 迁移段 + v1.3.2 段）。`smoke-test.mjs` 的 112 条本来就是对的。
+- **校正取证**（不是凭印象）：① 活体实测 `bash verify.sh | grep -o '✓' | wc -l` = 27，`✗` = 0；
+  ② 拆开 `.backup/dsh-vibrancy-skin-pre-migration-v1.3.2-20261004-033509.tar.gz`，其中 `verify.sh`
+  与当前**逐检查项完全一致**（`diff` 只多出第 9 行那条自定位注释）→ 27 自 v1.3.2 部署起即成立，
+  25 是**加那 2 条断言之前**（v1.3.1 时期）的数，当时忘记 +2。
+- **路径校正**：旧目录实际在 `/Users/leixiaokang/Documents/DSH-Default/.dsh-vibrancy-skin-old-20261004-033509`。
+- 顺手发现、**未动**（留作待办）：`.backup/LAST_BACKUP_TS` 仍写 `20260928-054614`，未反映 2026-10-04 的迁前备份。
 
 ## v1.3.2 delta (fix: dsh-cost-meter's "本会话费用明细" panel rendered fully transparent)
 
@@ -61,7 +74,10 @@ re-pointed at the new path (old directory kept as a symlink to it). No plugin co
   restores both tokens; the rule is not pane-scoped) → **112/112**. Its `parseRules()` helper is now
   paren-aware when splitting top-level selector lists, because `:is(a, b, c)` contains commas.
 * `verify.sh` §8 gained 2 assertions (snapshot present, overlay rule present) and now expects
-  version 1.3.2 → **25/25**.
+  version 1.3.2 → **27/27**. (2026-10-04 校正：当时记成 **25/25** 是漏加了这 2 条——25 是加断言**之前**
+  的旧值。27 = §1 4 + §2 2 + §3 1 + §4 2 + §5 3 + §6 4 + §8 11。取证：迁前快照
+  `.backup/dsh-vibrancy-skin-pre-migration-v1.3.2-20261004-033509.tar.gz` 里的 `verify.sh` 与当前
+  逐检查项一致，只多一行自定位注释 → 27 自 v1.3.2 部署起即成立。)
 * Also checked for the user: DSH Desktop 2.0.17 / kernel 0.2.0-rc.2 added a **peerDependencies
   compatibility gate** (`evaluatePluginCompatibility` in `dsh-app-boot`). This plugin declares no
   `peerDependencies`, so the gate returns early and passes; adding a range would risk the plugin
