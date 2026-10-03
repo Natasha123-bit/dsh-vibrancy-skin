@@ -13,6 +13,16 @@ turned into a git repository (`main`, tags `v1.2.0` and `v1.3.2`), and the profi
 re-pointed at the new path (old directory kept as a symlink to it). No plugin code changed:
 `client.js` md5 is `83db8447697538981563052b27dc951d` before and after. See `CHANGELOG.md`.
 
+**迁移切换后的复验（2026-10-04 03:3x，切换挂载 + 旧目录改软链之后）**
+- `node smoke-test.mjs` → 112/112；`bash verify.sh` → 25 ✓ / 0 ✗（§1 源码↔安装逐字节一致、
+  §2 `link:/Users/leixiaokang/Documents/DSH-Projects/dsh-vibrancy-skin`、§4 两条解析路径都指向新仓库、
+  §6 宿主日志自切换以来 0 条新行、§8 三张 sheet + 弹层快照/规则断言齐全、installed version = 1.3.2）。
+- 旧目录 `/Users/leixiaokang/Documents/DSH-Default/dsh-vibrancy-skin` 已 `mv` 到
+  `~/.dsh-vibrancy-skin-old-20261004-033509` 并原位置改挂软链 → 新仓库（经旧路径读 `client.js` md5 相同）。
+- 已知陈旧元数据（**故意不手改**）：profile 的 `pnpm-lock.yaml`、`node_modules/.pnpm/lock.yaml`、
+  `node_modules/.package-map.json` 仍写着旧 `link:` 路径。因为旧路径现在是有效软链，即便将来真跑一次
+  `pnpm install` 也能解析到同一份代码；手改 lockfile 反而有破坏完整性校验的风险（见 AGENTS.md 规则 1）。
+
 ## v1.3.2 delta (fix: dsh-cost-meter's "本会话费用明细" panel rendered fully transparent)
 
 * **Symptom reported by the user (2026-10-02):** opening dsh-cost-meter's new per-conversation
