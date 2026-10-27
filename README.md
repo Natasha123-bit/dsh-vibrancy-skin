@@ -1,6 +1,6 @@
 # dsh-vibrancy-skin
 
-macOS 原生 Vibrancy（磨砂玻璃）材质皮肤，用于 DSH Desktop 的**右侧会话面板**，
+macOS 原生 Vibrancy（磨砂玻璃）材质皮肤，用于 DSH NEXT / DSH Desktop 的**会话面板**，
 并为第三方侧边栏插件（dsh-better-sidebar）提供同款磨砂，**两级效果各自独立开关**。
 **只改材质，不改布局**：整个样式表只触碰 `background` 与自定义属性，不碰任何
 grid / 尺寸 / 定位 / 圆角 / 内边距 / 溢出，原生布局与功能逐位不变。
@@ -10,25 +10,42 @@ grid / 尺寸 / 定位 / 圆角 / 内边距 / 溢出，原生布局与功能逐�
 
 ## 1. 原理（为什么这样做）
 
-磨砂**不是这个插件做出来的**——窗口本身已经有原生毛玻璃了：
-
-`/Applications/DSH Desktop.app/Contents/Resources/app/lib/electron-runtime-Bq738q05.js`
+磨砂**不是这个插件做出来的**——窗口本身已经有原生毛玻璃了。
+DSH NEXT（2.0.20-next）的 `app.asar/lib/main.js` 在 `macosMaterial === "transparent"` 时
+仍然给窗口：
 
 ```js
-return spec.material === "transparent"
-  ? { ...custom, transparent: true, backgroundColor: "#00000000",
-      vibrancy: "sidebar", visualEffectState: "followWindow" }
-  : custom;
+{ vibrancy: "sidebar", visualEffectState: "active", backgroundColor: "#00000000" }
 ```
 
 而 profile 的 `macosMaterial` 已经是 `transparent`，所以整窗背后就是一层
-`NSVisualEffectView`。右半边之所以看起来是实心的，纯粹是上游的一条 CSS：
+`NSVisualEffectView`。看起来实心的那些面，纯粹是上游的 CSS 画上去的不透明底。
 
-```css
-.dshDesktopConversationSurface { background: var(--dsw-alias-bg-base); }
-```
+### 1.0 macOS 上还剩哪几层不透明（2026-10-28 实测于 2.0.20-next）
 
-本插件把这层不透明底换成一层可读的 tint，原生材质就透出来了。
+上游**自己已经做了一部分透明化**：`[data-platform=darwin] ._1qAH1q_frame{background:0 0}`，
+侧栏 `._1qAH1q_sidebarCol` 是 `color-mix(in srgb, var(--dsw-specific-sidebar-fill) 90%, transparent)`。
+**仍然实心的只有三个面**，都是 `background: var(--dsw-alias-bg-base)`：
+
+| 面 | 选择器（哈希前缀随构建变，只锚稳定局部名） | 归哪张 sheet |
+| --- | --- | --- |
+| 中栏 = 会话面板 | `[class*="_centerCol"]` | sheet 1（总开关） |
+| 底栏 = AppFrame 第二行 | `[class*="_bottomRow"]` | sheet 1（总开关） |
+| 右栏 = 侧边栏列 | `[class*="_rightbarCol"]` | sheet 2（侧边栏开关） |
+
+本插件把这些不透明底换成一层可读的 tint，原生材质就透出来了。
+
+### 1.0.1 v1.4.0 为什么必须改：门控从 `<body>` 搬到了 `<html>`
+
+DSH NEXT 之前，材质门控是 `<body data-dsh-desktop-platform data-dsh-desktop-material>`；
+2.0.20-next 改为 `lib/preload-app.cjs` 写 `document.documentElement.dataset.platform`
+与 `documentElement.dataset.nextMaterial`，即
+**`html[data-platform="darwin"][data-next-material="transparent"]`**。
+旧的两个 `data-dsh-desktop-*` 属性在 app.asar 里出现 **0 次** → v1.3.2 的选择器
+**一条都不命中**，所以用户看到的是"整个皮肤一次性失效"，而不是某个面板花掉。
+同一版里外壳 class 也全换了（`.dshDesktopConversationSurface` /
+`.dshDesktopRightbarSurface` / `.dshDesktopMacCaptionRow` 均 0 命中），故锚点一并改到
+AppFrame 的三列上。
 
 ### 三条不可松弛的红线
 
@@ -49,9 +66,9 @@ return spec.material === "transparent"
 `--dsw-alias-bg-base` 是上游**唯一**用来画会话区内部不透明层的 token。全量
 grep 出货的爆炸半径只有 13 个包的直接消费点：`ConversationRoot` 根元素、
 输入区渐隐座（composer seat）、附件卡片/缩略图/编辑器、sticky 表格行、
-AskQuestion / Inspect 卡片。把这一个 token 在 `.dshDesktopConversationSurface`
-子树内重定向，这些全部自动跟随，**一处生效、零遗漏**，而且不需要依赖任何
-哈希类名（`uPhUma_` 这种前缀会随构建变）。
+AskQuestion / Inspect 卡片。把这一个 token 在中栏 `[class*="_centerCol"]` 子树内重定向，这些全部自动跟随，
+**一处生效、零遗漏**。哈希前缀（`_1qAH1q_`、`uPhUma_`）每次构建都会变，所以只锚
+稳定局部名 —— 命不中最多是"磨砂不出现"，见 §1.1 的失效模式。
 
 已核实**安全**：没有任何 alias token 是从 `bg-base` 派生的；菜单/弹层走
 `--dsw-specific-menu` ← `--dsw-menu-surface-fill`（在 transparent 模式下上游强制
@@ -66,8 +83,9 @@ AskQuestion / Inspect 卡片。把这一个 token 在 `.dshDesktopConversationSu
 
 | 元素 | 原因 |
 | --- | --- |
-| `.dshDesktopSidebarSurface` | 上游已是透明，它就是要对齐的**参照物** |
-| `.dshDesktopRightbarSurface` 本身 | 它自己不画底；侧边栏磨砂走 §1.1 的独立作用域，不在这里下手 |
+| `[class*="_sidebarCol"]`（原 `.dshDesktopSidebarSurface`） | 上游在 darwin 上已是 `color-mix(… 90%, transparent)`，它就是要对齐的**参照物**；再染一次会叠成两层 |
+| `[class*="_frame"]`（原外壳根） | 上游在 darwin 上已是 `background: 0 0` |
+| `[class*="_rightbarCol"]` 列根 | 只在 sheet 2 里设为 transparent + 重定向 token；侧边栏磨砂走 §1.1 的独立作用域 |
 | 第三方插件的布局 / 组件 / 构建产物 | 一行都不改；只经由作者文档化的 token 契约改材质（§1.1） |
 | 菜单 / 弹层 / 输入框 | 它们多数走 `--dsw-specific-menu`、`--dsw-specific-input-major`，本来就与本次重定向无关；真正会吃到 `--dsw-alias-bg-base` 的 `dialog` / `[role=dialog]` 由**规则 4** 单独还原成不透明（§1.2） |
 
@@ -84,15 +102,16 @@ AskQuestion / Inspect 卡片。把这一个 token 在 `.dshDesktopConversationSu
 > `--dsw-alias-bg-layer-1`, which every dsh-web-ui skin overrides (see AGENTS.md §8)
 
 也就是说：**用 DSH 通用 token 而不是私有 token，就是为了让皮肤来覆盖它**。本插件
-顺着这个契约，在**三个稳定锚点**上重定向 token（全部是普通属性标记或 DSH 官方
-class，没有一个 CSS-module 哈希）：
+顺着这个契约，在**三个锚点**上重定向 token：
 
 ```css
-/* (a) 插件自己在 src/client/index.tsx:289 挂到 <body> 上的宿主元素 */
+/* (a) 插件自己在 src/client/index.tsx:289 挂到 <body> 上的宿主元素（普通属性标记） */
 [data-dsh-better-sidebar],
-/* (b) DSH Desktop 自己的第三列：aside.dshDesktopRightbarSurface[data-rightbar-col]，
-       子节点是 renderSlot("rightbar", …)，也就是侧边栏真正的落脚点 */
-.dshDesktopRightbarSurface[data-rightbar-col],
+/* (b) AppFrame 的第三列。v1.3.2 用的是 .dshDesktopRightbarSurface[data-rightbar-col]，
+       2.0.20-next 起那个 class 不存在了：列搬进 ui-layout 的 AppFrame，变成
+       '._1qAH1q_rightbarCol{background: var(--dsw-alias-bg-base)}'。哈希前缀随构建变，
+       所以只锚局部名；子节点仍是 renderSlot("rightbar", …)，也就是侧边栏真正的落脚点 */
+[class*="_rightbarCol"],
 /* (c) dockkit 的 dock 单元（DSH 用 var(--dsw-alias-bg-base) 给 dock 的 tab host 上底色） */
 [data-dockkit-host="dock"] {
   --dsw-alias-bg-base: var(--dsh-vib-pane);
@@ -114,8 +133,10 @@ DSH 前端 CSS：._tabHost_<hash>_<idx>:not(._float_…){ background: var(--dsw-
 覆盖 dock；(c) 是 dock 自己，万一哪天被 portal 到别处也仍然命中。
 
 `data-dsh-better-sidebar` 是作者写的**普通属性标记**（不是 CSS-module 哈希），
-`[data-rightbar-col]` / `[data-dockkit-host]` 是 DSH 与 dockkit 的公开 data 属性，
-插件每次更新都还在。两级效果：
+`[data-dockkit-host]` 是 dockkit 的公开 data 属性，两者每次更新都还在；
+`_rightbarCol` 是哈希类名，只锚**局部名**——前缀变了最坏是漏染，不会误伤别的元素。
+列根自己设为 `transparent`，让 dock 的 tab host 去画唯一一层 tint，与 §1 中栏同一处理方式。
+两级效果：
 
 | 级别 | 开关（默认） | 做什么 | 为什么这样切 |
 | --- | --- | --- | --- |
@@ -157,27 +178,37 @@ return e(E, null,
 - 它用**行内样式**把底色写成 `var(--dsw-alias-bg-base)`；而这个 token 恰好就是 §1 规则 2/3
   重定向的那一个 → 面板拿到的是一层 tint（用户当时 15% 强度 → 近乎全透明）。
 
-**修法**（规则 4，`client.js` 的 sheet 1）：token 是「在哪里声明就在哪里求值」的，所以在
-`<body>` 上先把上游原值快照下来，再把它交还给弹层：
+**修法**（规则 4，`client.js` 的 sheet 1）：token 是「在哪里声明就在哪里求值」的，所以
+在 `<body>` 上先备好**主题无关的静态色**，再把它交还给弹层：
 
 ```css
-/* 快照：声明在 body，此时 body 上的 token 还是上游原值（主题包自己就声明在 body） */
-body[…] { --dsh-vib-bg-base-solid: var(--dsw-alias-bg-base);
-          --dsh-vib-bg-layer-1-solid: var(--dsw-alias-bg-layer-1); }
+/* 快照：v1.4.0 起直接取自静态调色板（ui-theme 里 alias 就是对这两个值的转发） */
+html[…] body         { --dsh-vib-bg-base-solid:    var(--dsw-static-neutral-bluish-00, #fff);
+                       --dsh-vib-bg-layer-1-solid: var(--dsw-static-neutral-bluish-00, #fff); }
+html[…] body[dark]  { --dsh-vib-bg-base-solid:    var(--dsw-static-neutral-bluish-950, #151517);
+                       --dsh-vib-bg-layer-1-solid: var(--dsw-static-neutral-bluish-875, #1c1c1f); }
 
 /* 规则 4：不透明面交还给所有弹层（在弹层元素本身上声明，压过继承） */
-body[…] :is(dialog, [role="dialog"], [role="alertdialog"]) {
-  --dsw-alias-bg-base:  var(--dsh-vib-bg-base-solid);
+html[…] :is(dialog, [role="dialog"], [role="alertdialog"]) {
+  --dsw-alias-bg-base:    var(--dsh-vib-bg-base-solid);
   --dsw-alias-bg-layer-1: var(--dsh-vib-bg-layer-1-solid);
 }
 ```
+
+> v1.3.2 的快照写法是 `var(--dsw-alias-bg-base)`（利用"在声明处求值"截获上游原值）。
+> 2.0.20-next 里 ui-theme 把 alias 写成了静态 token 的转发，可以直接引用源头，**无环**
+> 且在语义上完全等价，所以 v1.4.0 改成直取静态色。
+>
+> 另外：NEXT 重建后的 Modal 已经改用 `--dsw-alias-bg-layer-2`（上游保证不透明），
+> 所以原生弹层不再需要这条规则；保留它是为了那些**用行内 `var(--dsw-alias-bg-base)`
+> 自绘底**的第三方面板（实测 dsh-cost-meter 的「费用明细」就是这种）。
 
 三个刻意的选择：
 
 1. **还原 token，而不是给弹层写死 `background`**：弹层内部如果有卡片/列表也吃
    `--dsw-alias-bg-base` / `-bg-layer-1`，它们会一起回到原生实心，不会出现「壳实心、内层还是
    透的」。
-2. **不绑定某一个面板作用域**（不写 `.dshDesktopConversationSurface :is(…)`）：弹层可能挂在
+2. **不绑定某一个面板作用域**（不写 `[class*="_centerCol"] :is(…)`）：弹层可能挂在
    会话区、标题栏或 `<body>` 上（portal 与否由第三方决定，随时会变），全局按平台+材质门槛
    生效最稳。皮肤的 token 重定向只发生在本插件自己的作用域里，所以这条规则在别处是空操作，
    不可能改变原生弹层外观。
@@ -222,7 +253,7 @@ cp "$SRC"/package.json "$SRC"/index.js "$SRC"/client.js "$SRC"/cordis.patch.yml 
 栈里（bundle insert 建好了它）。2026-09-28 04:01 的两次 live patch reload 即为此状态。
 
 重启 DSH Desktop 后，宿主日志
-`~/Library/Application Support/DSH Desktop/logs/host/dsh-*.log`
+`~/.dsh/logs/desktop-next.log`（2.0.20-next 起；旧路径 `DSH Desktop/logs/host/` 见 verify.sh 的回退）
 应当**不再**出现 `patch: entry "vibrancy-skin" not found`。
 
 > ⚠️ 不要用 `pnpm install` / `pnpm remove` / 市场卸载来管理这个包。
@@ -355,12 +386,31 @@ cp "$P/package.json" "$P/package.json.bak-$(date +%Y%m%d-%H%M%S)"
 - [x] 打开 dsh-cost-meter 的「费用明细」面板，面板是**实心可读**的（不再是透明的）——2026-10-04 用户确认
 - [x] 顺带看：设置里的弹层、插件管理器确认框、`@`/`/` 补层在任何强度下都不透明——2026-10-04 用户确认
 
+**DSH NEXT 适配（v1.4.0，2026-10-28）**
+
+静态侧已知全绿（可复核，不是"感觉好了"）：
+
+- [x] 门控改到 `html[data-platform="darwin"][data-next-material="transparent"]`，
+      与 `lib/preload-app.cjs` 实际写的属性逐字一致（在 app.asar 里 grep 到源头）
+- [x] 三个不透明面的锚点取自 ui-layout 的实际规则（`_centerCol` / `_bottomRow` / `_rightbarCol`
+      都实测 `background: var(--dsw-alias-bg-base)`），且 `[data-platform=darwin]` 覆盖规则也一并核对
+- [x] `node smoke-test.mjs` → **117/117**；`bash verify.sh` → **29 ✓ / 0 ✗**
+- [x] 已确认上游会自己透明的面（`_frame` / `_sidebarCol`）**不**被本插件重复染色
+- [x] 弹层快照改为直取静态调色板（`bluish-00` / `-950` / `-875`），无环、与 ui-theme 语义等价
+
+需要在窗口里用眼睛确认的（`Cmd+R` 之后）：
+
+- [ ] 中栏（会话区）透出桌面、文字可读 —— 这是本次修复的**主验收点**
+- [ ] 底栏（如有）与侧栏同色，不出现一条突兀的实心横带
+- [ ] better-sidebar 那一列仍是磨砂（右栏 + dock tab host）
+- [ ] 设置页「磨砂玻璃」不再显示"当前窗口没有启用玻璃背景"的提示
+- [ ] 浅色主题也看一眼
+
 **还没被明确看过的（都不影响已达成效果）**
 
 - [ ] 关掉「启用磨砂玻璃」→ 面板像素级回到原生实心；再打开 → 恢复磨砂
 - [ ] 关「侧边栏面板磨砂」→ 侧边栏当场回到原生实心，会话面板**不受影响**
 - [ ] 关「深层玻璃」→ 侧边栏内部卡片/列表立即回到实心
-- [ ] 顶部 32px 标题栏与下方会话区**同色**、可拖拽窗口
 - [ ] `Cmd+B` 折叠侧栏正常；侧栏/右栏 resize handle 拖拽正常
 - [ ] 输入框、发送按钮、`@`/`/` 补全弹层、右键菜单**保持不透明**
 - [ ] better-sidebar 的拖拽分栏、标签切换、底部工作台折叠等交互**全部正常**
@@ -370,6 +420,12 @@ cp "$P/package.json" "$P/package.json.bak-$(date +%Y%m%d-%H%M%S)"
 ---
 
 ## 6. 插件兼容性校验（内核 0.2.0-rc.2 起的新要求）
+
+> **2026-10-28 复核（2.0.20-next / `@deepseek-ai/dsh` 0.2.1-rc.3）**：判定逻辑不变，但
+> `@deepseek-ai/*` 现在从 `app.asar/node_modules` 解析（profile 的 `node_modules/@deepseek-ai`
+> 里只剩 `cosmokit` 与 `schemastery`）。本插件仍然**没有 `peerDependencies`**，所以这套
+> 豁免判定与它无关——内核再升版也不会因此拒绝加载它。下面 §6.1–§6.3 的取证写于
+> 0.2.0-rc.2 时期，作为判定源码的说明仍然有效。
 
 DSH Desktop 2.0.17 / 内核 0.2.0-rc.2 起，`dsh plugin add` 与启动会**拒绝**声明了不兼容
 `peerDependencies` 的包（不只是警告）。
@@ -427,4 +483,4 @@ function evaluatePluginCompatibility(manifest, exemptions = {}, runtimeVersion =
 | dshmarket@1.66.8 | `^0.2.0-rc.1` | 满足 |
 | @michengai/dsh-archive-manager@1.0.11 | 显式含 `0.2.0-rc.2` | 满足 |
 | @michengai/dsh-btw@0.1.15 | 显式含 `0.2.0-rc.2` | 满足 |
-| **dsh-vibrancy-skin@1.3.2** | **无 `peerDependencies`** | **放行** |
+| **dsh-vibrancy-skin@1.4.0** | **无 `peerDependencies`** | **放行** |

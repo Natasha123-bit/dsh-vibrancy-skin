@@ -83,7 +83,7 @@ function makeEnv({ withBody }) {
 
   const body = {
     dataset: withBody
-      ? { dsDarkTheme: "", dshDesktopMaterial: "transparent", dshDesktopPlatform: "darwin" }
+      ? { dsDarkTheme: "" }
       : {},
     style: style(),
   };
@@ -91,7 +91,12 @@ function makeEnv({ withBody }) {
   const document = {
     readyState: withBody ? "interactive" : "loading",
     head: { appendChild: (el) => headChildren.push(el) },
-    documentElement: { appendChild: (el) => headChildren.push(el) },
+    /* DSH NEXT announces the window on <html>: lib/preload-app.cjs sets
+       documentElement.dataset.platform and ...dataset.nextMaterial. */
+    documentElement: {
+      dataset: { platform: "darwin", nextMaterial: "transparent" },
+      appendChild: (el) => headChildren.push(el),
+    },
     body: withBody ? body : null,
     getElementById: (id) => headChildren.find((el) => el.id === id) ?? null,
     /* Pretend dsh-better-sidebar is mounted; one section overrides this back
@@ -439,7 +444,7 @@ console.log("H. the section renders a native-shaped, localized tree");
 console.log("I. does not touch the body when the window is not frosted");
 {
   const env = makeEnv({ withBody: true });
-  env.body.dataset.dshDesktopMaterial = "off";
+  env.document.documentElement.dataset.nextMaterial = "off";
   const exported = env.module();
   const { ctx, calls } = makeCtx({});
   exported.apply(ctx);
@@ -453,7 +458,7 @@ console.log("I. does not touch the body when the window is not frosted");
 console.log("J. every stylesheet touches material properties only");
 {
   const WINDOW_SCOPE =
-    'body[data-dsh-desktop-platform="darwin"][data-dsh-desktop-material="transparent"]';
+    'html[data-platform="darwin"][data-next-material="transparent"]';
 
   const parseRules = (css) => {
     const stripped = css.replace(/\/\*[\s\S]*?\*\//g, "");
@@ -534,7 +539,7 @@ console.log("J. every stylesheet touches material properties only");
   );
   check(
     "sheet 2 also covers the app's third column (visible sidebar lives there)",
-    panel.textContent.includes(".dshDesktopRightbarSurface[data-rightbar-col]"),
+    panel.textContent.includes('[class*="_rightbarCol"]'),
   );
   check(
     "sheet 2 also covers the dockkit dock (surface painted by the app's dock)",
@@ -551,9 +556,44 @@ console.log("J. every stylesheet touches material properties only");
     !/--dsh-vib-pane:\s*color-mix\([^;]*--dsw-alias-bg-base/.test(core.textContent),
   );
   check(
-    "sheet 1 snapshots the upstream opaque layers on <body> (before any retint)",
-    /--dsh-vib-bg-base-solid:\s*var\(--dsw-alias-bg-base\)/.test(core.textContent) &&
-      /--dsh-vib-bg-layer-1-solid:\s*var\(--dsw-alias-bg-layer-1\)/.test(core.textContent),
+    "sheet 1 restores dialogs from the static palette, not from the retinted token",
+    /--dsh-vib-bg-base-solid:\s*var\(--dsw-static-neutral-bluish-00/.test(core.textContent) &&
+      /--dsh-vib-bg-layer-1-solid:\s*var\(--dsw-static-neutral-bluish-00/.test(core.textContent),
+  );
+  check(
+    "sheet 1 has a dark-theme twin for both the tint and the snapshots",
+    /\[data-ds-dark-theme\]\s*\{[\s\S]*?--dsh-vib-pane:[\s\S]*?--dsh-vib-bg-base-solid:[\s\S]*?--dsh-vib-bg-layer-1-solid:/.test(
+      core.textContent,
+    ),
+  );
+  check(
+    "sheet 1 anchors the AppFrame center column and bottom row by stable local name",
+    /\[class\*="_centerCol"\]\s*\{[\s\S]*?background:\s*transparent !important;[\s\S]*?--dsw-alias-bg-base:\s*var\(--dsh-vib-pane\)/.test(
+      core.textContent,
+    ) &&
+      /\[class\*="_bottomRow"\]\s*\{[\s\S]*?background:\s*transparent !important;/.test(
+        core.textContent,
+      ),
+  );
+  check(
+    "sheet 1 leaves the already-translucent upstream surfaces alone (no double tint)",
+    (() => {
+      const noComments = core.textContent.replace(/\/\*[\s\S]*?\*\//g, "");
+      return !/\[class\*="_sidebarCol"\]/.test(noComments) &&
+        !/\[class\*="_frame"\]/.test(noComments);
+    })(),
+  );
+  check(
+    "no sheet still gates on the retired body-level data-dsh-desktop-* keys",
+    ![ core, panel ].some((sheet) =>
+      /data-dsh-desktop-/.test(sheet.textContent.replace(/\/\*[\s\S]*?\*\//g, "")),
+    ),
+  );
+  check(
+    "the sidebar column is unpainted by us so its dock supplies the single layer",
+    /\[class\*="_rightbarCol"\]\s*\{\s*background:\s*transparent !important;/.test(
+      panel.textContent,
+    ),
   );
   check(
     "sheet 1 restores the opaque sheet for dialog-like overlays",
@@ -563,7 +603,7 @@ console.log("J. every stylesheet touches material properties only");
   );
   check(
     "the overlay restore is not scoped to one pane (portals may move the dialog)",
-    /^body\[data-dsh-desktop-platform="darwin"\]\[data-dsh-desktop-material="transparent"\] :is\(dialog/m.test(
+    /^html\[data-platform="darwin"\]\[data-next-material="transparent"\] :is\(dialog/m.test(
       core.textContent,
     ),
   );
@@ -581,7 +621,7 @@ console.log("J. every stylesheet touches material properties only");
   check(
     "sheet 3 uses the same three anchors as sheet 2",
     deep.textContent.includes("[data-dsh-better-sidebar]") &&
-      deep.textContent.includes(".dshDesktopRightbarSurface[data-rightbar-col]") &&
+      deep.textContent.includes('[class*="_rightbarCol"]') &&
       deep.textContent.includes('[data-dockkit-host="dock"]'),
   );
 }

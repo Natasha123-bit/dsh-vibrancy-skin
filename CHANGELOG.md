@@ -14,12 +14,29 @@
 | **v1.2.0** | ✓ | `.backup/v1.2.0-20260928-054614/` + 同名 tar.gz → 本仓库 **commit #1**，打 tag `v1.2.0` |
 | v1.3.0 | ✗ | 不可复原，**不打 tag** |
 | v1.3.1 | ✗ | 不可复原，**不打 tag** |
-| **v1.3.2** | ✓ | 当前 HEAD，打 tag `v1.3.2` |
+| **v1.3.2** | ✓ | 打 tag `v1.3.2` |
+| **v1.4.0** | ✓ | 当前 HEAD（DSH NEXT 适配） |
 
 **不按文档"重建" v1.3.0 / v1.3.1**：重建物与当时实际运行的代码不是同一个东西，写进历史会污染「能回滚」的语义。
 它们是本仓库建立之前就存在的缺口，不是迁移造成的；迁移唯一新增的好处是 **v1.2.0 之后的每一版都会真正留痕**。
 
 ---
+
+## 2026-10-28 — v1.4.0：适配 DSH NEXT（2.0.20-next / `@deepseek-ai/dsh` 0.2.1-rc.3）
+
+- **触发**：用户报告"dsh 发生更新了，现在皮肤插件已经失效"，要求适配本机的 DSH NEXT。
+- **根因**：`2.0.20-next` 把窗口材质门控从 `<body data-dsh-desktop-*>` 搬到
+  `<html data-platform data-next-material>`（`lib/preload-app.cjs`），并整体换了外壳 DOM
+  （`.dshDesktopConversationSurface` / `.dshDesktopRightbarSurface` / `.dshDesktopMacCaptionRow`
+  在 app.asar 里 **0 命中**）→ v1.3.2 的全部选择器一次性失配。
+- **改动**：门控换到 `html[data-platform="darwin"][data-next-material="transparent"]`；
+  中栏 / 底栏 / 右栏锚点改到 AppFrame 的 `_centerCol` / `_bottomRow` / `_rightbarCol`
+  （只锚稳定局部名，不锚哈希前缀）；删掉已不存在的标题条规则；弹层快照改为直取静态调色板；
+  设置页的 `active` 判定与控制台日志改读 `<html>`；`verify.sh` 第 6 节改读
+  `~/.dsh/logs/desktop-next.log`（新日志用 ISO-8601 UTC 时间戳，旧的时间过滤不再适用）。
+- **验收**：`node smoke-test.mjs` **117/117**；`bash verify.sh` **29 ✓ / 0 ✗**；
+  窗口观感待用户 `Cmd+R` 目视确认。版本号三处同步（`package.json` / `verify.sh` / 本文）。
+- **未改**：无 `peerDependencies`、无 `backdrop-filter`、第三方插件文件一个字节没碰。
 
 ## 2026-10-04 — 仓库化迁移（未改版本号）
 

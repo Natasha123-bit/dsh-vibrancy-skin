@@ -8,7 +8,10 @@ P="$HOME/.dsh/profiles/desktop"
 PKG="$P/node_modules/dsh-vibrancy-skin"
 # 自定位：脚本所在目录就是源码目录（2026-10-04 迁到 DSH-Projects 后不再写死绝对路径）
 SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-LOGDIR="$HOME/Library/Application Support/DSH Desktop/logs/host"
+# DSH NEXT writes its host log to ~/.dsh/logs (desktop-next.log + a jsonl twin);
+# the old "DSH Desktop/logs/host" location is kept as a fallback for 2.0.17.
+LOGDIR="$HOME/.dsh/logs"
+[ -d "$LOGDIR" ] || LOGDIR="$HOME/Library/Application Support/DSH Desktop/logs/host"
 
 ok()   { printf '  \033[32m✓\033[0m %s\n' "$1"; }
 bad()  { printf '  \033[31m✗\033[0m %s\n' "$1"; }
@@ -65,35 +68,41 @@ console.log((typeof rel === "string" ? "\u2713" : "\u2717") + " exports[\"./clie
 console.log((p.dsh.bundle.patch ? "\u2713" : "\u2717") + " dsh.bundle.patch -> " + p.dsh.bundle.patch);
 ' 2>&1 | sed 's/^/  /'
 
-echo "== 6. host log, lines newer than the installed plugin =="
-# The .error.log carries only W/E rows, so a clean boot means no new rows at all.
-SINCE=$(date -r "$PKG/client.js" "+%Y-%m-%d %H:%M:%S")
-echo "  installed at: $SINCE (lines older than this are stale history)"
-for LOG in "$LOGDIR"/dsh-"$(date +%Y-%m-%d)".error.log "$LOGDIR"/dsh-"$(date +%Y-%m-%d)".log; do
+echo "== 6. host log: plugin-relevant rows =="
+# DSH NEXT logs to ~/.dsh/logs/desktop-next.log with ISO-8601 (UTC) stamps, so
+# the old "newer than the installed file" filter — which assumed local time —
+# no longer applies; the plugin's own rows are simply searched for below.
+# The 2.0.17 layout ("DSH Desktop/logs/host/dsh-<date>.log") is still checked
+# if it happens to exist.
+FOUND_LOG=0
+for LOG in "$LOGDIR/desktop-next.log" "$LOGDIR"/dsh-"$(date +%Y-%m-%d)".log; do
   [ -f "$LOG" ] || continue
-  NEW=$(awk -v since="$SINCE" 'match($0, /^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}/) && substr($0, RSTART, RLENGTH) >= since' "$LOG")
-  N=$(printf '%s' "$NEW" | grep -c . || true)
-  echo "  -- $(basename "$LOG"): $N new row(s)"
-  if [ "${N:-0}" -gt 0 ]; then
-    printf '%s\n' "$NEW" | grep -E 'vibrancy|client-modules|ClientPackage|FAILED|boot activation' | sed 's/^/       /' || true
-    printf '%s\n' "$NEW" | grep -qE 'vibrancy-skin.*not found' \
-      && bad "mount NOT effective (new 'not found' warnings)" \
-      || ok "no 'not found' warning since install"
-    printf '%s\n' "$NEW" | grep -qE 'ClientPackageCompositionError|FAILED' \
-      && bad "client-modules rejected a package declaration (see rows above)" \
-      || ok "no client-modules composition error"
+  FOUND_LOG=1
+  N=$(grep -c . "$LOG" 2>/dev/null || true)
+  echo "  -- $(basename "$LOG"): $N row(s) on disk"
+  grep -E 'vibrancy|client-modules|ClientPackage|boot activation' "$LOG" 2>/dev/null | tail -5 | sed 's/^/       /' || true
+  if grep -qE 'vibrancy-skin.*not found' "$LOG"; then
+    bad "mount NOT effective ('not found' warning present)"
   else
-    ok "no new log rows at all"
+    ok "no 'not found' warning for the plugin"
+  fi
+  if grep -qE 'ClientPackageCompositionError|FAILED to' "$LOG"; then
+    bad "client-modules rejected a package declaration (see rows above)"
+  else
+    ok "no client-modules composition error"
   fi
 done
+[ "$FOUND_LOG" -eq 1 ] || ok "no host log on disk yet (nothing recorded, cannot be a failure)"
+
 
 echo "== 7. HTTP probing is not usable here =="
 echo "  /plugins/<pkg>/client.js is token-guarded even on loopback: unauthenticated curl gets 403."
 echo "  Real confirmation is the renderer console line:"
 echo "    [dsh-vibrancy-skin] applied — enabled true, sidebar panels true, deep glass false,"
-echo "                                            tint 40%, theme ..., material transparent"
-echo "  Open it with Cmd+Opt+I; if absent, the client half was not served."
-echo "  UI confirmation: Settings -> 磨砂玻璃 / Vibrancy (a sibling of the built-in Desktop page),"
+echo "                                            tint 40%, theme ..., platform darwin, material transparent"
+echo "  Open it with Cmd+Opt+I (DSH NEXT: View -> Developer -> Toggle Developer Tools);"
+echo "  if the line is absent, the client half was not served."
+echo "  UI confirmation: Settings -> 磨砂玻璃 / Vibrancy (a sibling of the built-in 桌面设置 page),"
 echo "  with the switches '侧边栏面板磨砂' (default on) and '深层玻璃' (default off)."
 
 echo "== 8. installed client half carries all three sheets =="
@@ -103,18 +112,30 @@ done
 grep -q 'data-dsh-better-sidebar' "$PKG/client.js" \
   && ok "sidebar scoped to [data-dsh-better-sidebar] (plugin-owned marker, hash-proof)" \
   || bad "sidebar scope anchor missing"
-grep -q 'dshDesktopRightbarSurface\[data-rightbar-col\]' "$PKG/client.js" \
-  && ok "sidebar also scoped to the app's third column (where the visible dock lives)" \
+grep -q '\[class\*="_rightbarCol"\]' "$PKG/client.js" \
+  && ok "sidebar also scoped to the AppFrame's rightbar column (where the visible dock lives)" \
   || bad "rightbar-column anchor missing (the visible sidebar is painted by the app's dock)"
+grep -q '\[class\*="_centerCol"\]' "$PKG/client.js" \
+  && ok "main pane anchored on the AppFrame center column (2.0.20-next shell)" \
+  || bad "center-column anchor missing — the conversation pane would stay opaque"
+grep -q '\[class\*="_bottomRow"\]' "$PKG/client.js" \
+  && ok "bottom row anchored on the AppFrame grid row" \
+  || bad "bottom-row anchor missing"
+grep -q 'html\[data-platform="darwin"\]\[data-next-material="transparent"\]' "$PKG/client.js" \
+  && ok "gated on html[data-platform][data-next-material] (the 2.0.20-next protocol)" \
+  || bad "NEXT root gate missing"
+grep -q 'data-dsh-desktop-platform' "$PKG/client.js" \
+  && bad "a retired body-level data-dsh-desktop-* gate survived (it matches nothing in 2.0.20-next)" \
+  || ok "no retired body-level gate left"
 grep -q 'data-dockkit-host="dock"' "$PKG/client.js" \
   && ok "sidebar also scoped to the dockkit dock cell" \
   || bad "dockkit anchor missing"
 grep -qE '\[class\*="_tabHost_"\]' "$PKG/client.js" \
   && ok "dock tab host background pinned explicitly" \
   || bad "dock tab host rule missing"
-grep -qE '\-\-dsh-vib-bg-base-solid:[[:space:]]*var\(--dsw-alias-bg-base\)' "$PKG/client.js" \
-  && ok "opaque --dsw-alias-bg-base snapshot captured on <body>" \
-  || bad "opaque snapshot of --dsw-alias-bg-base missing (dialogs would stay see-through)"
+grep -qE '\-\-dsh-vib-bg-base-solid:[[:space:]]*var\(--dsw-static-neutral-bluish-00' "$PKG/client.js" \
+  && ok "opaque dialog snapshot comes from the theme-invariant static palette" \
+  || bad "opaque snapshot missing (dialogs would stay see-through)"
 grep -qE ':is\(dialog, \[role="dialog"\], \[role="alertdialog"\]\)' "$PKG/client.js" \
   && ok "dialog-like overlays get the opaque sheet back (dsh-cost-meter 费用明细 fix)" \
   || bad "overlay restore rule missing — dialog-style panels render transparent"
@@ -123,6 +144,6 @@ grep -qE 'backdrop-filter[[:space:]]*:' "$PKG/client.js" \
   || ok "no backdrop-filter declaration (comments explaining why are fine)"
 node -e '
 const v = require("'"$PKG"'/package.json").version;
-console.log((v === "1.3.2" ? "\u2713" : "\u2717") + " installed version = " + v + (v === "1.3.2" ? "" : " (expected 1.3.2)"));
+console.log((v === "1.4.0" ? "\u2713" : "\u2717") + " installed version = " + v + (v === "1.4.0" ? "" : " (expected 1.4.0)"));
 ' 2>&1 | sed 's/^/  /'
 

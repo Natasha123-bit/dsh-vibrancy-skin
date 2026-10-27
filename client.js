@@ -18,19 +18,45 @@ window.__ModuleLoader__.load({
        ====================================================================== */
     const CSS_CONTENT = `
 /* ==========================================================================
-   dsh-vibrancy-skin — macOS native vibrancy for the DSH Desktop main pane
+   dsh-vibrancy-skin — macOS native vibrancy for DSH NEXT / DeepSeek Harness
+   (verified against DSH Desktop 2.0.20-next + @deepseek-ai/dsh 0.2.1-rc.3)
    --------------------------------------------------------------------------
    HOW THE FROST IS PRODUCED
-     dsh-plugin-desktop already creates the window with
-         { transparent: true, vibrancy: "sidebar", visualEffectState: "followWindow" }
-     whenever macosMaterial = "transparent" (see lib/electron-runtime-*.js).
-     That is a real NSVisualEffectView behind the whole window. The only
-     reason the right-hand conversation pane is NOT frosted today is a CSS
-     decision made upstream: ".dshDesktopConversationSurface { background:
-     var(--dsw-alias-bg-base) }" — one fully opaque layer.
+     The window is still created with
+         { vibrancy: "sidebar", visualEffectState: "active",
+           backgroundColor: "#00000000" }
+     whenever macosMaterial = "transparent" (app.asar/lib/main.js), so a real
+     NSVisualEffectView still sits behind the whole window. Nothing in this
+     file blurs anything; it only removes the opaque sheets painted on top.
 
-     So this stylesheet does not blur anything itself. It removes that
-     opaque layer and leaves a readable tint in its place.
+   WHAT CHANGED IN DSH NEXT (and why v1.3.2 went completely dark)
+     1. THE GATE MOVED FROM <body> TO <html>. lib/preload-app.cjs now does
+            document.documentElement.dataset.platform = process.platform
+            document.documentElement.dataset.nextMaterial = "off"|"transparent"
+        The old body-level data-dsh-desktop-* keys appear ZERO times in
+        2.0.20-next, so every v1.3.2 selector silently stopped matching. This
+        is the whole reason the skin "died" at once rather than on one panel.
+     2. THE SHELL LEARNED TO BE TRANSLUCENT ITSELF. On darwin the app frame is
+        already 'background: 0 0' and the sidebar column is already
+        'color-mix(in srgb, var(--dsw-specific-sidebar-fill) 90%,
+        transparent)'. The surfaces that are STILL opaque are the center
+        column, the right column and the bottom row:
+            ._1qAH1q_centerCol / ._1qAH1q_rightbarCol / ._1qAH1q_bottomRow
+            { background: var(--dsw-alias-bg-base) }
+     3. THE SHELL CLASS NAMES ARE GONE. .dshDesktopConversationSurface,
+        .dshDesktopMacCaptionRow and .dshDesktopRightbarSurface do not exist
+        any more; ui-layout ships hashed CSS-module names instead
+        (._1qAH1q_centerCol). The hash prefix changes on every upstream build,
+        so the anchors below match on the stable local part only
+        ([class*="_centerCol"]), which is the same trick sheet 2 already used
+        for dsh-better-sidebar. A renamed local part costs a missed tint, never
+        a broken layout.
+     4. OVERLAYS ARE HEALTHIER NOW. The rebuilt Modal resolves
+        --dsw-alias-bg-layer-2 instead of --dsw-alias-bg-base, so dialogs are
+        opaque without help. Rule 4 is kept only for panels that paint
+        themselves with an INLINE 'background: var(--dsw-alias-bg-base)' — the
+        measured case is dsh-cost-meter's 费用明细 sheet, which is a plain
+        element in the normal DOM flow inside the retinted subtree.
 
    RULES THIS FILE MUST KEEP (learned the hard way)
      1. NEVER use backdrop-filter. Upstream documents the reason verbatim:
@@ -45,10 +71,10 @@ window.__ModuleLoader__.load({
         independent palette; it must NEVER reference --dsw-alias-bg-base,
         because that is the very property being overridden (a self reference
         resolves to the guaranteed-invalid value and blanks the pane).
-     4. Everything is scoped to body[data-dsh-desktop-platform="darwin"]
-        [data-dsh-desktop-material="transparent"], so the plugin is inert on
-        every other platform / material setting and falls back cleanly to
-        the upstream look.
+     4. Everything is scoped to
+        html[data-platform="darwin"][data-next-material="transparent"],
+        so the plugin is inert on every other platform / material setting and
+        falls back cleanly to the upstream look.
 
    TUNABLING
      One knob: --dsh-vib-tint-strength (below), also exposed in
@@ -61,7 +87,7 @@ window.__ModuleLoader__.load({
    Light and dark are separate rules because the palette is expressed as
    theme-invariant static tokens; body[data-ds-dark-theme] is the only
    switch upstream uses for dark mode. */
-body[data-dsh-desktop-platform="darwin"][data-dsh-desktop-material="transparent"] {
+html[data-platform="darwin"][data-next-material="transparent"] body {
   --dsh-vib-tint-strength: 40%;
   --dsh-vib-pane: color-mix(
     in srgb,
@@ -70,25 +96,28 @@ body[data-dsh-desktop-platform="darwin"][data-dsh-desktop-material="transparent"
   );
 
   /* --- 1b. Snapshots of the upstream opaque layers -----------------------
-     Custom properties are substituted where they are DECLARED, and upstream
-     declares these two on <body> itself (dsh-client-ui-theme: "body {
-     --dsw-alias-bg-base: var(--dsw-static-neutral-bluish-00) }" plus the
-     [data-ds-dark-theme] twin). Capturing them here therefore stores the
-     literal upstream colour, not a reference that a later retint could
-     shadow. Rule 4 hands the snapshot back to overlays. */
-  --dsh-vib-bg-base-solid: var(--dsw-alias-bg-base);
-  --dsh-vib-bg-layer-1-solid: var(--dsw-alias-bg-layer-1);
+     v1.3.2 captured these with 'var(--dsw-alias-bg-base)' because upstream
+     declared that property on <body> and a var() captures the value where it
+     is declared. That trick still works, but it is needlessly indirect now
+     that ui-theme spells the values out: --dsw-alias-bg-base is exactly
+     var(--dsw-static-neutral-bluish-00) in light and -950 in dark, layer-1
+     is -00 / -875. Naming the static token directly is cycle-free by
+     construction and survives upstream moving the alias elsewhere. */
+  --dsh-vib-bg-base-solid: var(--dsw-static-neutral-bluish-00, #fff);
+  --dsh-vib-bg-layer-1-solid: var(--dsw-static-neutral-bluish-00, #fff);
 }
 
-body[data-dsh-desktop-platform="darwin"][data-dsh-desktop-material="transparent"][data-ds-dark-theme] {
+html[data-platform="darwin"][data-next-material="transparent"] body[data-ds-dark-theme] {
   --dsh-vib-pane: color-mix(
     in srgb,
     var(--dsw-static-neutral-bluish-950, #151517) var(--dsh-vib-tint-strength),
     transparent
   );
+  --dsh-vib-bg-base-solid: var(--dsw-static-neutral-bluish-950, #151517);
+  --dsh-vib-bg-layer-1-solid: var(--dsw-static-neutral-bluish-875, #1c1c1f);
 }
 
-/* --- 2. Main pane --------------------------------------------------------
+/* --- 2. Center column (the conversation pane) ----------------------------
    --dsw-alias-bg-base is the one token upstream uses for EVERY opaque layer
    inside the conversation pane. Grep of the shipped client bundles shows its
    complete blast radius: ConversationRoot root, the composer fade-out seat,
@@ -97,31 +126,34 @@ body[data-dsh-desktop-platform="darwin"][data-dsh-desktop-material="transparent"
    translucency, and because custom properties inherit, the whole subtree
    follows — including whatever panel the main slot is currently showing.
 
-   The pane itself is set transparent on purpose: the active panel paints the
-   tint, so the frost is exactly one layer deep instead of two stacked
+   The column itself is set transparent on purpose: the active panel paints
+   the tint, so the frost is exactly one layer deep instead of two stacked
    semi-transparent layers (which would silently double the opacity). */
-body[data-dsh-desktop-platform="darwin"][data-dsh-desktop-material="transparent"] .dshDesktopConversationSurface {
+html[data-platform="darwin"][data-next-material="transparent"] [class*="_centerCol"] {
   background: transparent !important;
   --dsw-alias-bg-base: var(--dsh-vib-pane);
 }
 
-/* --- 3. Title bar strip --------------------------------------------------
-   Keeps its upstream 'background: var(--dsw-alias-bg-base)' declaration and
-   its '-webkit-app-region: drag'; it only needs the tint so the top 32px
-   does not become a different shade from the pane below it. */
-body[data-dsh-desktop-platform="darwin"][data-dsh-desktop-material="transparent"] .dshDesktopMacCaptionRow {
+/* --- 3. Bottom row -------------------------------------------------------
+   The AppFrame's second grid row ('grid-column: 1/-1') spans the full width
+   under both columns and is still 'background: var(--dsw-alias-bg-base)', so
+   it is handled like the center column. The 32px caption strip is gone: on
+   darwin the frame itself is 'background: 0 0' and --dsh-frame-top-clearance
+   (48px) keeps the traffic lights over the frozen sidebar, so there is no
+   strip left to tint. */
+html[data-platform="darwin"][data-next-material="transparent"] [class*="_bottomRow"] {
+  background: transparent !important;
   --dsw-alias-bg-base: var(--dsh-vib-pane);
 }
 
 /* --- 4. Overlays keep the upstream opaque sheet -------------------------
-   The retint in rule 2 is inherited by every descendant of the pane, and the
-   retint in rule 3 by everything under the 32px title strip. That is what
-   makes nested content frosted — but it also reaches things that are NOT
-   pane material: dialog-like overlays, which are meant to be a solid,
+   The retint in rules 2/3 is inherited by every descendant of those columns.
+   That is what makes nested content frosted — but it also reaches things that
+   are NOT pane material: dialog-like overlays, which are meant to be a solid,
    readable sheet floating above the frost.
 
-   Measured case (dsh-cost-meter 1.8.6, "本会话费用明细"): the entry button and
-   the panel are one React fragment, so the panel is a plain <dialog> in the
+   Measured case (dsh-cost-meter, "本会话费用明细"): the entry button and the
+   panel are one React fragment, so the panel is a plain <dialog> in the
    normal DOM flow (no portal) and it paints itself with an INLINE style
    "background: var(--dsw-alias-bg-base, #fff)". Under the retint that token
    is the translucent tint, so the whole panel turned see-through and the
@@ -136,25 +168,25 @@ body[data-dsh-desktop-platform="darwin"][data-dsh-desktop-material="transparent"
    Scope: the whole gated document, not one pane. Dialogs are few, are always
    meant to be readable, and a portal can move the same dialog between the
    pane, the title strip and <body> without any CSS change on our side. */
-body[data-dsh-desktop-platform="darwin"][data-dsh-desktop-material="transparent"] :is(dialog, [role="dialog"], [role="alertdialog"]) {
+html[data-platform="darwin"][data-next-material="transparent"] :is(dialog, [role="dialog"], [role="alertdialog"]) {
   --dsw-alias-bg-base: var(--dsh-vib-bg-base-solid);
   --dsw-alias-bg-layer-1: var(--dsh-vib-bg-layer-1-solid);
 }
 
 /* Deliberately NOT touched here:
-   .dshDesktopSidebarSurface  — already transparent upstream; this is the
-                                reference look the pane is matching.
-   .dshDesktopRightbarSurface — the own left-nav column of the app; we only
-                                retint the app's conversation pane from this
-                                sheet.
-   Third-party sidebars (dsh-better-sidebar) are handled by sheet 2/3 below,
-   behind their own switches, so they can be turned off independently.
+   [class*="_sidebarCol"]   — already color-mix(...,90%,transparent) upstream
+                              on darwin; this is the reference look the pane
+                              is matching. Retinting it would double the tint.
+   [class*="_frame"]        — already 'background: 0 0' on darwin.
+   [class*="_rightbarCol"]  — the app's own third column; handled by sheet 2
+                              behind the sidebar switch, exactly like v1.3.2
+                              treated .dshDesktopRightbarSurface.
    Menus / popovers / inputs  — they resolve --dsw-specific-menu and
-                                --dsw-specific-input-major, which derive from
-                                the static palette and are unaffected by the
-                                scoped --dsw-alias-bg-base override. Those that
-                                DO consume --dsw-alias-bg-base while sitting in
-                                a retinted subtree are covered by rule 4 above.
+                              --dsw-specific-input-major, which derive from
+                              the static palette and are unaffected by the
+                              scoped --dsw-alias-bg-base override. Those that
+                              DO consume --dsw-alias-bg-base while sitting in
+                              a retinted subtree are covered by rule 4 above.
 */
 `;
 
@@ -166,18 +198,24 @@ body[data-dsh-desktop-platform="darwin"][data-dsh-desktop-material="transparent"
 /* ==========================================================================
    dsh-vibrancy-skin — sidebar surfaces, behind the "侧边栏面板磨砂" switch
    --------------------------------------------------------------------------
-   Three anchors, all of them stable, none of them a CSS-module hash:
+   Three anchors. (a) and (c) are provider-owned attributes that survived the
+   DSH NEXT rewrite untouched; (b) is a hashed CSS-module name, matched on its
+   stable local part only.
 
    (a) [data-dsh-better-sidebar] — the host element the plugin appends to
        <body> itself (src/client/index.tsx:289:
        'host.setAttribute("data-dsh-better-sidebar", ""); document.body.appendChild(host)')
        and renders its UI into.
 
-   (b) .dshDesktopRightbarSurface[data-rightbar-col] — DSH Desktop's own third
-       grid column. The desktop shell renders it as
-       'aside.dshDesktopRightbarSurface[data-rightbar-col]' whose children are
-       renderSlot("rightbar", …) (lib/client.js), so the aside is the column
-       root and the slot content hangs underneath it.
+   (b) [class*="_rightbarCol"] — the app frame's third grid column. In
+       2.0.20-next the column moved into ui-layout's AppFrame and is now
+       '._1qAH1q_rightbarCol{background: var(--dsw-alias-bg-base)}' (the darwin
+       override repeats the same declaration, so being on macOS does NOT make
+       it translucent). v1.3.2 anchored this on
+       '.dshDesktopRightbarSurface[data-rightbar-col]', which no longer exists
+       anywhere in the shipped bundle; the slot children are still
+       renderSlot("rightbar", …), so retinting the column root still covers
+       everything hung under it.
 
    (c) [data-dockkit-host="dock"] — the dockkit cell that hosts a docked
        panel. DSH's dock paints its tab host with
@@ -188,12 +226,11 @@ body[data-dsh-desktop-platform="darwin"][data-dsh-desktop-material="transparent"
    dsh-better-sidebar's own host only carries the hidden bottom workbench —
    its visible file tree / editor is slot content inside the right column, and
    that column's surface is painted by the APP's dock, not by the plugin:
-   'section._tabHost_<hash>_<idx>._pane_<hash>_<idx>' resolved to
-   rgb(21,21,23) = the raw --dsw-alias-bg-base, because it sits outside
-   [data-dsh-better-sidebar]. Frosting only (a) therefore left the whole
-   visible sidebar opaque. (b) is the column root and covers the dock, (c) is
-   the dock itself, so the tint lands even if the dock is ever portaled
-   elsewhere.
+   'section._tabHost_<hash>_<idx>._pane_<hash>_<idx>' resolved to the raw
+   --dsw-alias-bg-base, because it sits outside [data-dsh-better-sidebar].
+   Frosting only (a) therefore left the whole visible sidebar opaque. (b) is
+   the column root and covers the dock, (c) is the dock itself, so the tint
+   lands even if the dock is ever portaled elsewhere.
 
    WHY A TOKEN, NOT PER-ELEMENT RULES: dsh-better-sidebar documents the
    extension point itself (src/client/sidebar.module.css:13-21) — "every
@@ -203,6 +240,11 @@ body[data-dsh-desktop-platform="darwin"][data-dsh-desktop-material="transparent"
    and the floating window; re-pointing it once at a column root covers all of
    them at once, which is exactly how sheet 1 treats the conversation pane.
 
+   The column root itself is transparent for the same reason the center column
+   is: the dock inside it paints the tint ('._tabHost_…{background:
+   var(--dsw-alias-bg-base)}' upstream), so the frost stays exactly one layer
+   deep instead of two stacked semi-transparent layers.
+
    The two layer-1 chrome bars (the 34px tab strip and the bottom workbench)
    keep an explicit rule so they are frosted even while the deeper sheet is
    off. Their class names are hashed by the CSS-module build
@@ -210,16 +252,20 @@ body[data-dsh-desktop-platform="darwin"][data-dsh-desktop-material="transparent"
    builds, the local name is stable, and a miss costs nothing but a missed
    tint.
    ========================================================================== */
-body[data-dsh-desktop-platform="darwin"][data-dsh-desktop-material="transparent"] [data-dsh-better-sidebar],
-body[data-dsh-desktop-platform="darwin"][data-dsh-desktop-material="transparent"] .dshDesktopRightbarSurface[data-rightbar-col],
-body[data-dsh-desktop-platform="darwin"][data-dsh-desktop-material="transparent"] [data-dockkit-host="dock"] {
+html[data-platform="darwin"][data-next-material="transparent"] [class*="_rightbarCol"],
+html[data-platform="darwin"][data-next-material="transparent"] [data-dsh-better-sidebar],
+html[data-platform="darwin"][data-next-material="transparent"] [data-dockkit-host="dock"] {
   --dsw-alias-bg-base: var(--dsh-vib-pane);
 }
 
-body[data-dsh-desktop-platform="darwin"][data-dsh-desktop-material="transparent"] [data-dsh-better-sidebar] [class*="_tabBar"],
-body[data-dsh-desktop-platform="darwin"][data-dsh-desktop-material="transparent"] [data-dsh-better-sidebar] [class*="_bottomPanel"],
-body[data-dsh-desktop-platform="darwin"][data-dsh-desktop-material="transparent"] .dshDesktopRightbarSurface[data-rightbar-col] [class*="_tabHost_"],
-body[data-dsh-desktop-platform="darwin"][data-dsh-desktop-material="transparent"] [data-dockkit-host="dock"] [class*="_tabHost_"] {
+html[data-platform="darwin"][data-next-material="transparent"] [class*="_rightbarCol"] {
+  background: transparent !important;
+}
+
+html[data-platform="darwin"][data-next-material="transparent"] [data-dsh-better-sidebar] [class*="_tabBar"],
+html[data-platform="darwin"][data-next-material="transparent"] [data-dsh-better-sidebar] [class*="_bottomPanel"],
+html[data-platform="darwin"][data-next-material="transparent"] [class*="_rightbarCol"] [class*="_tabHost_"],
+html[data-platform="darwin"][data-next-material="transparent"] [data-dockkit-host="dock"] [class*="_tabHost_"] {
   background: var(--dsh-vib-pane);
 }
 `;
@@ -238,19 +284,19 @@ body[data-dsh-desktop-platform="darwin"][data-dsh-desktop-material="transparent"
    layer-1, so re-pointing it once makes the *inside* of every surface glass
    as well instead of only the big flat panels.
 
-   The anchor for the visible side column is
-   .dshDesktopRightbarSurface[data-rightbar-col] + [data-dockkit-host="dock"],
-   not just [data-dsh-better-sidebar]: on this machine the latter only holds
-   the hidden bottom workbench while the visible dock lives in the app's own
-   third column (measured live — see sheet 2's comment).
+   The anchor for the visible side column is the AppFrame's rightbar column
+   ([class*="_rightbarCol"]) + [data-dockkit-host="dock"], not just
+   [data-dsh-better-sidebar]: on this machine the latter only holds the hidden
+   bottom workbench while the visible dock lives in the app's own third column
+   (measured live — see sheet 2's comment).
 
    Off by default on purpose: the panel surfaces still carry the tint from
    sheet 2, so text there keeps the same contrast as the conversation pane,
    while layering more translucency behind text is a taste call.
    ========================================================================== */
-body[data-dsh-desktop-platform="darwin"][data-dsh-desktop-material="transparent"] [data-dsh-better-sidebar],
-body[data-dsh-desktop-platform="darwin"][data-dsh-desktop-material="transparent"] .dshDesktopRightbarSurface[data-rightbar-col],
-body[data-dsh-desktop-platform="darwin"][data-dsh-desktop-material="transparent"] [data-dockkit-host="dock"] {
+html[data-platform="darwin"][data-next-material="transparent"] [class*="_rightbarCol"],
+html[data-platform="darwin"][data-next-material="transparent"] [data-dsh-better-sidebar],
+html[data-platform="darwin"][data-next-material="transparent"] [data-dockkit-host="dock"] {
   --dsw-alias-bg-layer-1: var(--dsh-vib-pane);
 }
 `;
@@ -288,7 +334,7 @@ body[data-dsh-desktop-platform="darwin"][data-dsh-desktop-material="transparent"
       fineSuffix: "%",
       fineHint: "0% 完全透明，100% 等同于原生不透明面板。",
       reset: "恢复默认",
-      inactive: "当前窗口没有启用玻璃背景：请在「桌面」页把材质设为「玻璃背景」，且仅在 macOS 上生效。",
+      inactive: "当前窗口没有启用玻璃背景：请在「桌面设置」页把「窗口材质」设为「玻璃背景」，且仅在 macOS 上生效。",
     };
 
     const en = {
@@ -320,7 +366,7 @@ body[data-dsh-desktop-platform="darwin"][data-dsh-desktop-material="transparent"
       fineSuffix: "%",
       fineHint: "0% is fully transparent, 100% matches the native opaque pane.",
       reset: "Reset to default",
-      inactive: "This window does not use a glass background: set Material to “Glass background” on the Desktop page (macOS only).",
+      inactive: "This window does not use a glass background: set “Window material” to “Glass background” on the Desktop settings page (macOS only).",
     };
 
     /* =====================================================================
@@ -636,10 +682,16 @@ body[data-dsh-desktop-platform="darwin"][data-dsh-desktop-material="transparent"
         setTint(`${n}%`);
       };
 
+      /* The window-material gate lives on <html> since DSH NEXT: preload-app.cjs
+         writes documentElement.dataset.platform and ...dataset.nextMaterial.
+         Reading the root also covers the settings page rendering before <body>
+         has been touched by the shell. */
+      const root = document.documentElement;
       const active =
-        document.body !== null &&
-        document.body.dataset.dshDesktopPlatform === "darwin" &&
-        document.body.dataset.dshDesktopMaterial === "transparent";
+        root !== null &&
+        root !== undefined &&
+        root.dataset.platform === "darwin" &&
+        root.dataset.nextMaterial === "transparent";
 
       const sidebar = hasBetterSidebar();
 
@@ -789,8 +841,9 @@ body[data-dsh-desktop-platform="darwin"][data-dsh-desktop-material="transparent"
         applyTintInline();
         expose();
         const body = document.body;
+        const root = document.documentElement;
         console.info(
-          `[dsh-vibrancy-skin] applied — enabled ${state.enabled}, sidebar panels ${state.panels}, deep glass ${state.deep}, tint ${state.tint}, theme ${body && body.dataset.dsDarkTheme !== undefined ? "dark" : "light"}, material ${(body && body.dataset.dshDesktopMaterial) || "n/a"}`,
+          `[dsh-vibrancy-skin] applied — enabled ${state.enabled}, sidebar panels ${state.panels}, deep glass ${state.deep}, tint ${state.tint}, theme ${body && body.dataset.dsDarkTheme !== undefined ? "dark" : "light"}, platform ${(root && root.dataset.platform) || "n/a"}, material ${(root && root.dataset.nextMaterial) || "n/a"}`,
         );
       });
 

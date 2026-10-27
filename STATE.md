@@ -2,7 +2,8 @@
 
 **Install time:** 2026-09-28 03:28, redeployed **04:14** as v1.2.0, **05:47** as v1.3.0, then
 **06:12** as **v1.3.1**, **06:20** as the same 1.3.1 with the temporary diagnostic probe
-stripped back out, and **2026-10-02 23:57 (+0800)** as **v1.3.2** (dialog/overlay opacity fix)
+stripped back out, **2026-10-02 23:57 (+0800)** as **v1.3.2** (dialog/overlay opacity fix),
+and **2026-10-28 03:5x** as **v1.4.0** (DSH NEXT 2.0.20-next / dsh 0.2.1-rc.3 port)
 **Source of truth:** this directory. `~/.dsh/profiles/desktop/node_modules/dsh-vibrancy-skin`
 is a **symlink to this directory**, so an edit here is already the installed copy — there is no
 copy step and no second place to keep in sync.
@@ -35,6 +36,57 @@ re-pointed at the new path (old directory kept as a symlink to it). No plugin co
   25 是**加那 2 条断言之前**（v1.3.1 时期）的数，当时忘记 +2。
 - **路径校正**：旧目录实际在 `/Users/leixiaokang/Documents/DSH-Default/.dsh-vibrancy-skin-old-20261004-033509`。
 - 顺手发现、**未动**（留作待办）：`.backup/LAST_BACKUP_TS` 仍写 `20260928-054614`，未反映 2026-10-04 的迁前备份。
+
+## v1.4.0 delta (port: DSH NEXT 2.0.20-next + @deepseek-ai/dsh 0.2.1-rc.3)
+
+**症状（用户 2026-10-28 报告）：** DSH 更新后皮肤插件「已经失效」——不是某一处花掉，是**整片
+没有任何磨砂**，设置页还提示"当前窗口没有启用玻璃背景"。
+
+**根因（取证自 `/Applications/DSH NEXT.app/Contents/Resources/app.asar`，不是猜的）：**
+
+1. **门控从 `<body>` 搬到了 `<html>`。** `lib/preload-app.cjs` 现在写
+   `document.documentElement.dataset.platform = process.platform` 与
+   `documentElement.dataset.nextMaterial = "off" | "transparent"`；
+   v1.3.2 用的 `body[data-dsh-desktop-platform][data-dsh-desktop-material]` 在 app.asar 里
+   **出现 0 次** → 32 条选择器一条不中，所以是"一次性全灭"。
+2. **外壳 class 全换了。** `.dshDesktopConversationSurface` / `.dshDesktopRightbarSurface` /
+   `.dshDesktopMacCaptionRow` 均 **0 命中**；2.0.20-next 用 ui-layout 的 CSS-module 哈希类，
+   `._1qAH1q_centerCol` / `_rightbarCol` / `_bottomRow` / `_sidebarCol` / `_frame`。
+3. 上游**自己已经透明化了一部分**：`[data-platform=darwin] ._1qAH1q_frame{background:0 0}`、
+   `_sidebarCol` 用 `color-mix(in srgb, var(--dsw-specific-sidebar-fill) 90%, transparent)`。
+   仍实心的是 `_centerCol`、`_rightbarCol`、`_bottomRow`，三者都是
+   `background: var(--dsw-alias-bg-base)`（darwin 覆盖规则里又重复了一遍，所以 macOS 上
+   **不会**自动变透明）。
+
+**改动（`client.js`，只动材质）：**
+
+| 位置 | v1.3.2 | v1.4.0 |
+| --- | --- | --- |
+| 门控 | `body[data-dsh-desktop-platform="darwin"][data-dsh-desktop-material="transparent"]` | `html[data-platform="darwin"][data-next-material="transparent"]` |
+| 中栏 | `.dshDesktopConversationSurface` | `[class*="_centerCol"]` |
+| 标题条 | `.dshDesktopMacCaptionRow` | 删除（2.0.20-next 没有这条 32px 容器；`--dsh-frame-top-clearance: 48px` 直接让流量灯浮在冻结的侧栏上） |
+| 底栏 | 无 | 新增 `[class*="_bottomRow"]` |
+| 右栏（sheet 2/3） | `.dshDesktopRightbarSurface[data-rightbar-col]` | `[class*="_rightbarCol"]`，且列根本身设 `background: transparent !important`，由 dock 的 tab host 画唯一一层 tint |
+| 弹层快照 | `var(--dsw-alias-bg-base)` / `-bg-layer-1`（在 body 上截获上游原值） | 直取 `--dsw-static-neutral-bluish-00/-950/-875`（ui-theme 里 alias 就是对它们的转发，语义等价且无环） |
+| 设置页 `active` 判定 | 读 `document.body.dataset.dshDesktopPlatform/dshDesktopMaterial` | 读 `document.documentElement.dataset.platform/nextMaterial` |
+| 控制台日志 | `material <body 属性>` | `platform <html> material <html>` |
+
+**刻意没做的事：** 不给 `_sidebarCol` / `_frame` 再刷一层（上游已经透明，重复染色会叠成两层）；
+不引入 `backdrop-filter`；不加 `peerDependencies`；不动任何第三方插件的文件。
+
+**实现踩到的坑（记下来省下一次）：** 用 `python` 按行号替换 `client.js` 的模板字符串之后，
+再调 `edit` 工具会被文件版本守卫拦下（`FS_STALE_VERSION: file changed since it was read`）
+——替换后必须重新 `read` 再 `edit`，不要混用两种改法。
+
+**验收（可复核）：**
+- `node smoke-test.mjs` → **117/117 PASSED**（v1.3.2 的 112 条 + 5 条 NEXT 专项：
+  AppFrame 中栏/底栏锚点、右栏 transparent、dark 双份、旧门控零残留）
+- `bash verify.sh` → **29 ✓ / 0 ✗**（v1.3.2 的 27 条里换了右栏锚点，新增 centerCol / bottomRow /
+  NEXT 门控 / 旧门控零残留 4 条 + 静态色快照断言，并把 §6 日志段改到 `~/.dsh/logs/desktop-next.log`）
+- 未能自证的部分：**真实窗口观感**只能由用户 `Cmd+R` 后目视确认（README §5 已列出 5 个观察点）。
+
+**没改的陈旧元数据（沿用 v1.3.2 的结论）：** profile 侧 `pnpm-lock.yaml` 等仍写旧 `link:` 路径；
+`.backup/LAST_BACKUP_TS` 仍是 `20260928-054614`。
 
 ## v1.3.2 delta (fix: dsh-cost-meter's "本会话费用明细" panel rendered fully transparent)
 
