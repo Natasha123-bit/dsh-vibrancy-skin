@@ -1,9 +1,11 @@
 # dsh-vibrancy-skin
 
 macOS 原生 Vibrancy（磨砂玻璃）材质皮肤，用于 DSH NEXT / DSH Desktop 的**会话面板**，
-并为第三方侧边栏插件（dsh-better-sidebar）提供同款磨砂，**两级效果各自独立开关**。
-**只改材质，不改布局**：整个样式表只触碰 `background` 与自定义属性，不碰任何
-grid / 尺寸 / 定位 / 圆角 / 内边距 / 溢出，原生布局与功能逐位不变。
+并为第三方侧边栏插件（dsh-better-sidebar）提供同款磨砂，**两级效果各自独立开关**；
+v1.5.0 起还可以上传一张本地图片当玻璃底图（「透到壁纸」/「透到桌面」）。
+**只改材质，不改布局**：前三张样式表只触碰 `background` 与自定义属性；第四张（背景图）
+只画一个 `body::before` 装饰层（`position` / `inset` / `z-index` / `filter` / `background-*`，
+`pointer-events:none`），不参与布局，不碰任何 grid / 尺寸 / 圆角 / 内边距 / 溢出。
 **也不改任何第三方插件文件**——一个字节都不碰，见 §1.1。
 
 ---
@@ -56,7 +58,9 @@ AppFrame 的三列上。
    在透明 vibrancy 窗口上做窗口内模糊，只会糊上一层均匀灰雾（上一版 6 个面全
    用 backdrop-filter，用户原话：「我现在连整个窗口都被蒙上了一层灰，我什么也
    看不见了」）。模糊交给系统，CSS 只负责"把挡住它的东西挪开"。
-2. **只改材质，不改布局。** 只允许 `background*` 与自定义属性。
+   v1.5.0 的「背景图」也只对**图片自身**做 `filter: blur(36px)`，不是窗口内采样（§1.3）。
+2. **只改材质，不改布局。** 前三张表只允许 `background*` 与自定义属性；第 4 张只允许
+   一个 `body::before` 装饰层（`pointer-events:none`，不占布局）。
 3. **tint 必须无环。** tint 用**静态调色板**（`--dsw-static-neutral-bluish-00/950`）
    合成，**绝不能**引用 `--dsw-alias-bg-base`——那正是被覆盖的属性，自引用会
    解析成 guaranteed-invalid 值，整个面板变全透明不可读。
@@ -220,6 +224,89 @@ html[…] :is(dialog, [role="dialog"], [role="alertdialog"]) {
 ---
 
 
+## 1.3 背景图（v1.5.0）：为什么是页面内一层，而不是让系统再透一点
+
+需求：可以上传一张图片，让磨砂面板透出这张图（「透到壁纸」）；也可以选择「透到桌面」，
+保持原来的原生材质。**v1.5.0 的语义（A 方案）**：
+
+| 模式 | 观感 | 实现 |
+| --- | --- | --- |
+| `desktop`（默认） | 与 v1.4.0 完全一致：玻璃后面是真实桌面 | 第 4 张表**不存在** |
+| `wallpaper` | 上传图铺满整窗当玻璃底图，面板磨砂透出这张图 | 第 4 张表 + `--dsh-vib-bg-image` |
+
+### 为什么不让窗口自己再透
+
+三条路都堵死了（2026-11-06 取证于 `app.asar`）：
+
+1. **宿主进程没有 Electron 主进程 API。** 运行的 host 是独立 Node 进程
+   （`app.asar/lib/host.js`，Electron 二进制但无 `BrowserWindow`），
+   preload 只暴露读取材质的 `dsh-next:material`（invoke 读），没有设置窗口材质的接口。
+2. **窗口材质是创建时定死的。** `main.js` 创建窗口时传
+   `vibrancy: "sidebar", visualEffectState: "active", backgroundColor: "#00000000"`，
+   后续只在 `main.js:874` 按 `macosMaterial` 在 `"sidebar"` 与 `null` 之间切。
+   Electron 框架二进制里虽然能搜到 `under-page` 字符串，但没有可用的调用面。
+3. **改系统壁纸是系统级副作用**（`systemPreferences.setDesktopWallpaper`），
+   不可逆、影响面超出本插件，不做。
+
+所以唯一可控的位置是**页面内的一层**：`html` / `body` / `#root` 在 darwin 上本来就透明
+（`app.css`：`html[data-platform=darwin] body{background:transparent}`），
+原生 `NSVisualEffectView` 在 Z 轴最下面；在它上面、所有内容下面再垫一层图片即可。
+
+### 第 4 张表只做三件事
+
+```css
+html[data-platform="darwin"][data-next-material="transparent"] body::before {
+  content: "";
+  position: fixed;
+  inset: -64px;              /* 让模糊边缘落在视口外，避免硬边 */
+  z-index: -1;               /* 原生材质之上、全部内容之下 */
+  pointer-events: none;      /* 绝不拦截点击/拖拽 */
+  background-image: var(--dsh-vib-bg-image);
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover;
+  filter: blur(36px);        /* 只模糊图片自己，不采样窗口外 */
+}
+```
+
+- **开关 = `<style>` 存在与否**（沿用既有约定）：`wanted = enabled && bgMode==="wallpaper" && bgUrl!==null`。
+  切回「透到桌面」、关总开关、移除图片 → 整张表消失，零残留。
+- **图片经一个内联自定义属性传入**（`body.style.setProperty("--dsh-vib-bg-image", 'url("blob:…")')`），
+  与 tint 同理：优先级最高，且随表一起消失。
+- **为什么不用 `backdrop-filter`**：红线 1。那种写法要采样窗口后面的东西，在透明 vibrancy
+  窗口上就是整片灰雾；这里的 blur 只作用在图片自己的像素上。
+
+### 图片怎么进来、存在哪
+
+1. 文件选择 → `createImageBitmap(file, { imageOrientation: "from-image" })`
+   （EXIF 方向跟着转）→ `canvas` 长边缩到 **2048 px** → `toBlob("image/webp", 0.9)`；
+2. 压缩后的 Blob 存 **IndexedDB**：db `dsh-vibrancy-skin` / store `bg` /
+   记录 `image`（`{ id, blob, name, updatedAt }`，keyPath 是 `id`）；
+3. 运行时只用 `URL.createObjectURL(blob)` 生成的 `blob:` URL，**从不把图片转成 base64 塞进
+   CSS 或 localStorage**（5 MB 上限 + 字符串化会让大图直接失败）；
+4. 启动时 `restoreBgImage()` 异步读回 Blob、重建 objectURL、再决定要不要装第 4 张表。
+   失败（没有 IDB / 记录丢了 / 模式已切回 desktop）一律静默，保持「透到桌面」观感。
+
+**隐私**：图片只在本机解码、压缩、存储；插件没有网络请求，也没有上报。设置页的
+`bgHint` 明确写了"不联网、不上传"。**换 profile 或清站点数据会丢图**（origin 是
+`dsh-app://app`，同一 profile 内稳定）。
+
+### 失败模式（都是"退回桌面"，不会更糟）
+
+| 情况 | 结果 |
+| --- | --- |
+| 没有 `createImageBitmap` / `canvas` / `toBlob` | 提示"无法解码"，不改任何状态 |
+| 文件 > 30 MB | 提示先压缩，不读文件 |
+| 没有 `indexedDB` / `URL.createObjectURL` | 当次可显示则显示；重启后回到桌面 |
+| `wallpaper` 但图片记录不在 | 不装表 → 桌面观感；设置页显示"还没有选择图片" |
+| 关总开关 / 切回桌面 | 表与内联变量同时摘掉，像素级回到原生 |
+
+性能：整窗只有**一个** fixed 装饰层；模糊的是 2048 px 的 WebP（一般 < 1 MB），
+不是每帧采样。CPU/GPU 开销远低于 backdrop-filter 方案。
+
+
+---
+
 ## 2. 安装
 
 源码留在这里（**不要把 `node_modules` 当源码改**），文件拷进 profile：
@@ -271,18 +358,20 @@ cp "$SRC"/package.json "$SRC"/index.js "$SRC"/client.js "$SRC"/cordis.patch.yml 
 
 这一页不是自己画的 UI，而是直接复用了 DSH Desktop 官方设置页的样式类
 （`dshDesktopSettings*`，由 `dsh-plugin-desktop` 无条件安装），所以它在浅色/深色
-主题下与「桌面」页外观完全一致。**四组控件、三个开关**：
+主题下与「桌面」页外观完全一致。**五组控件、三个开关**（另加背景图的模式卡片与图片按钮）：
 
 | 分组 | 控件 | 作用 |
 | --- | --- | --- |
 | 外观 | 「启用磨砂玻璃」开关（总开关） | 关 = 摘掉全部样式表，**像素级回到原生**（不是 tint 100%，见下） |
+| 背景图（v1.5.0） | 「透到桌面」/「透到壁纸」两张卡片 + 选择/更换/移除图片 | 壁纸 = 上传图铺满整窗当玻璃底图；桌面 = 原生透真实桌面。图片本机压缩后存 IndexedDB，见 §1.3 |
 | 侧边栏（better-sidebar） | 「侧边栏面板磨砂」开关（默认**开**） | 面板本体、标签栏、底部工作台、改动视图、任务图、浮动窗变成同款磨砂 |
 | 侧边栏（better-sidebar） | 「深层玻璃（卡片 / 列表）」开关（默认**关**） | 连内部卡片、列表、内联编辑器也一起玻璃化；对比度会下降 |
 | 强度 | 磨砂 / 均衡 / 实心 三张卡片 | 24% / 40%（默认）/ 62%，**三级色板共用** |
 | 微调 | 0–100 数字输入 + 「恢复默认」 | 预设不够用时精确指定 |
 
-选择写进 `localStorage`（`dsh-vibrancy-skin:tint` / `:enabled` / `:panels` / `:deep`），
-下次启动自动恢复。两个侧边栏开关在总开关关闭时显示为灰色（因为整张样式表都不在）。
+选择写进 `localStorage`（`dsh-vibrancy-skin:tint` / `:enabled` / `:panels` / `:deep` /
+`:bg-mode` / `:bg-name`），下次启动自动恢复。两个侧边栏开关在总开关关闭时显示为灰色
+（因为整张样式表都不在）。背景图本身不进 localStorage，走 IndexedDB（§1.3）。
 
 **为什么「关」是摘样式表而不是 tint 归 0 或 100**：tint 100% 只把
 `.dshDesktopConversationSurface` 置为 transparent，而画 tint 的是当前面板的根元素
@@ -304,8 +393,11 @@ dshVibrancySkin.setTint("")       // 复位
 dshVibrancySkin.setEnabled(false) // 总开关（会话面板 + 侧边栏一起）
 dshVibrancySkin.setPanels(false)  // 只关侧边栏"面板层"
 dshVibrancySkin.setDeep(true)     // 打开"深层玻璃"
-dshVibrancySkin.resetAll()        // 回到出厂：40% / 面板开 / 深层关 / 总开关开
-dshVibrancySkin.getState()        // { enabled, panels, deep, tint, defaultTint, presets }
+dshVibrancySkin.setBgMode("wallpaper") // 透到壁纸（需要有图；无图时等同于桌面观感）
+dshVibrancySkin.setBgMode("desktop")   // 透到桌面（默认）
+// setBgImage(blob, name) / clearBgImage() 也暴露了，正常走设置页的「选择图片」即可
+dshVibrancySkin.resetAll()        // 回到出厂：40% / 面板开 / 深层关 / 总开关开 / 透到桌面（保留已存图片）
+dshVibrancySkin.getState()        // { enabled, panels, deep, tint, bgMode, bgName, bgUrl, defaultTint, presets }
 dshVibrancySkin.subscribe(fn)     // 订阅（设置界面就是靠它同步的）
 ```
 
@@ -370,6 +462,7 @@ cp "$P/package.json" "$P/package.json.bak-$(date +%Y%m%d-%H%M%S)"
       2026-09-28 06:0x；报告留在 `/tmp/dsh-vibrancy-probe.ndjson.done`）
 - [x] **设置里多出「磨砂玻璃 / Vibrancy」一页**，位置紧挨内置「桌面」页之后
 - [x] 该页共 4 组控件、3 个开关（总开关 / 侧边栏面板 / 深层玻璃）——渲染树已在 smoke test 里逐项断言
+      （v1.5.0 增加「背景图」组后为 5 组 / 3 开关，见下面的 v1.5.0 段）
 - [x] 在这页调强度当场生效（用户把强度调到 15%，探针读到的就是 15%）
 
 **侧边栏磨砂（v1.3.1 起，用户已确认）**
@@ -394,7 +487,8 @@ cp "$P/package.json" "$P/package.json.bak-$(date +%Y%m%d-%H%M%S)"
       与 `lib/preload-app.cjs` 实际写的属性逐字一致（在 app.asar 里 grep 到源头）
 - [x] 三个不透明面的锚点取自 ui-layout 的实际规则（`_centerCol` / `_bottomRow` / `_rightbarCol`
       都实测 `background: var(--dsw-alias-bg-base)`），且 `[data-platform=darwin]` 覆盖规则也一并核对
-- [x] `node smoke-test.mjs` → **117/117**；`bash verify.sh` → **29 ✓ / 0 ✗**
+- [x] `node smoke-test.mjs` → **117/117**；`bash verify.sh` → **29 ✓ / 0 ✗**（v1.5.0 起为 **168/168** 与
+      **36 ✓ / 0 ✗**，见下一段）
 - [x] 已确认上游会自己透明的面（`_frame` / `_sidebarCol`）**不**被本插件重复染色
 - [x] 弹层快照改为直取静态调色板（`bluish-00` / `-950` / `-875`），无环、与 ui-theme 语义等价
 
@@ -405,6 +499,25 @@ cp "$P/package.json" "$P/package.json.bak-$(date +%Y%m%d-%H%M%S)"
 - [ ] better-sidebar 那一列仍是磨砂（右栏 + dock tab host）
 - [ ] 设置页「磨砂玻璃」不再显示"当前窗口没有启用玻璃背景"的提示
 - [ ] 浅色主题也看一眼
+
+**背景图磨砂（v1.5.0，2026-11-06）**
+
+静态侧已知全绿（可复核）：
+
+- [x] 第 4 张表只在 `enabled && bgMode==="wallpaper" && bgUrl!==null` 时存在；唯一选择器是门控
+      `body::before`，`pointer-events:none`、无 `backdrop-filter`、无布局属性（smoke test 独立审计）
+- [x] `node smoke-test.mjs` → **168/168**；`bash verify.sh` → **36 ✓ / 0 ✗**
+- [x] 无 IndexedDB / 无 `URL.createObjectURL` 时启动不抛，静默保持桌面观感
+- [x] `node visual-bg.mjs` → `/tmp/dsh-bg-preview.png`：壁纸颜色透过三块面板可见，
+      没有整片灰雾、没有硬切黑边（与本机原生窗口无关，只验证第 4 张表）
+
+需要 `Cmd+R` 之后用眼睛确认：
+
+- [ ] 设置 → 磨砂玻璃 → 「背景图」：选一张图后整窗变成该图的磨砂底，面板文字仍可读
+- [ ] 切回「透到桌面」→ 立刻回到原生桌面，图片层无残留
+- [ ] 关总开关 → 壁纸层同时消失（不是只剩图片）
+- [ ] 重启 app → 壁纸模式与图片仍在（IndexedDB 恢复）
+- [ ] 移除图片 → 回到桌面模式，设置页显示"还没有选择图片"
 
 **还没被明确看过的（都不影响已达成效果）**
 
@@ -483,4 +596,4 @@ function evaluatePluginCompatibility(manifest, exemptions = {}, runtimeVersion =
 | dshmarket@1.66.8 | `^0.2.0-rc.1` | 满足 |
 | @michengai/dsh-archive-manager@1.0.11 | 显式含 `0.2.0-rc.2` | 满足 |
 | @michengai/dsh-btw@0.1.15 | 显式含 `0.2.0-rc.2` | 满足 |
-| **dsh-vibrancy-skin@1.4.0** | **无 `peerDependencies`** | **放行** |
+| **dsh-vibrancy-skin@1.5.0** | **无 `peerDependencies`** | **放行** |

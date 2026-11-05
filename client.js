@@ -301,6 +301,33 @@ html[data-platform="darwin"][data-next-material="transparent"] [data-dockkit-hos
 }
 `;
 
+    /* ======================================================================
+       SHEET 4/4 — background image ("透到壁纸" wallpaper mode).
+       Installed only while a local picture is active: the picture is exposed
+       to CSS through one inline custom property on <body> and painted on a
+       fixed pseudo element BEHIND the whole window content (z-index: -1).
+       It is removed the moment the user switches back to "透到桌面", so the
+       native vibrancy (real desktop) comes back with zero leftover CSS.
+
+       No backdrop filter here on purpose: sampling a transparent vibrancy
+       window paints a flat grey fog (see sheet 1). The blur is applied to
+       the picture itself, never to the window.
+       ====================================================================== */
+    const BG_CSS_CONTENT = `
+html[data-platform="darwin"][data-next-material="transparent"] body::before {
+  content: "";
+  position: fixed;
+  inset: -64px;
+  z-index: -1;
+  pointer-events: none;
+  background-image: var(--dsh-vib-bg-image);
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover;
+  filter: blur(36px);
+}
+`;
+
     /* =====================================================================
        Locale
        ===================================================================== */
@@ -312,6 +339,20 @@ html[data-platform="darwin"][data-next-material="transparent"] [data-dockkit-hos
       appearanceTitle: "外观",
       appearanceIntro: "把不透明的会话面板换成一层半透明染色，让窗口背后的桌面透出来。",
       enable: "启用磨砂玻璃",
+      bgTitle: "背景图",
+      bgIntro: "把一张自己的图片垫在玻璃后面。图片只在本机处理，不会上传；换回「透到桌面」即恢复原生效果。",
+      bgDesktopTitle: "透到桌面",
+      bgDesktopBody: "玻璃后面是真实的桌面（当前效果）。",
+      bgWallpaperTitle: "透到壁纸",
+      bgWallpaperBody: "用一张图片当壁纸，磨砂面板透出这张图。",
+      bgPick: "选择图片…",
+      bgReplace: "更换图片…",
+      bgRemove: "移除",
+      bgEmpty: "还没有选择图片 —— 选好后才会生效；现在仍按「透到桌面」显示。",
+      bgHint: "图片会压缩到长边 2048 px 并保存在本机浏览器存储，不联网、不上传；清站点数据或换 profile 会丢失。",
+      bgPreviewAlt: "当前背景图预览",
+      bgDecodeFailed: "这张图片无法解码，换一张 JPG / PNG / WebP 试试。",
+      bgTooLarge: "图片超过 30 MB，先压缩或换一张吧。",
       sidebarTitle: "侧边栏（better-sidebar）",
       sidebarIntro: "让第三方侧边栏插件的界面也用同一层玻璃。两级效果各自独立开关，都跟随上面的总开关与强度。",
       sidebarMissing: "当前没有检测到 dsh-better-sidebar，本组开关暂时不会产生任何效果。",
@@ -344,6 +385,20 @@ html[data-platform="darwin"][data-next-material="transparent"] [data-dockkit-hos
       appearanceTitle: "Appearance",
       appearanceIntro: "Replaces the opaque conversation pane with a translucent tint so the desktop behind the window shows through.",
       enable: "Enable vibrancy",
+      bgTitle: "Background image",
+      bgIntro: "Put your own picture behind the glass. It is processed on this machine and never uploaded; switch back to “Desktop” for the native look.",
+      bgDesktopTitle: "Desktop",
+      bgDesktopBody: "The glass shows the real desktop (current look).",
+      bgWallpaperTitle: "Wallpaper",
+      bgWallpaperBody: "Use a picture as the wallpaper; the frosted panes show it.",
+      bgPick: "Choose image…",
+      bgReplace: "Replace image…",
+      bgRemove: "Remove",
+      bgEmpty: "No image yet — pick one to turn it on; until then the window keeps the desktop look.",
+      bgHint: "The image is compressed to 2048 px on the long edge and stored in this browser profile. No network, no upload; clearing site data or switching profile loses it.",
+      bgPreviewAlt: "Current background image preview",
+      bgDecodeFailed: "This image could not be decoded. Try a JPG, PNG or WebP.",
+      bgTooLarge: "The image is over 30 MB — compress it or pick another one.",
       sidebarTitle: "Sidebar (better-sidebar)",
       sidebarIntro: "Lets the third-party sidebar plugin use the same glass. Both levels have their own switch and follow the master switch and strength above.",
       sidebarMissing: "dsh-better-sidebar is not present right now — these switches have no effect at the moment.",
@@ -378,6 +433,18 @@ html[data-platform="darwin"][data-next-material="transparent"] [data-dockkit-hos
     const PANELS_KEY = "dsh-vibrancy-skin:panels";
     const DEEP_KEY = "dsh-vibrancy-skin:deep";
     const DEFAULT_TINT = "40%";
+
+    /* --- background image (v1.5.0) --------------------------------------- */
+    const BG_STYLE_ID = "dsh-vibrancy-skin-bg-styles";
+    const BG_KEY = "dsh-vibrancy-skin:bg-mode";
+    const BG_NAME_KEY = "dsh-vibrancy-skin:bg-name";
+    const BG_URL_VAR = "--dsh-vib-bg-image";
+    const BG_DB_NAME = "dsh-vibrancy-skin";
+    const BG_STORE = "bg";
+    const BG_RECORD = "image";
+    const BG_MAX_EDGE = 2048;
+    const BG_QUALITY = 0.9;
+    const BG_MAX_BYTES = 30 * 1024 * 1024;
 
     const PRESETS = [
       { id: "frost", tint: "24%", title: "presetFrostTitle", body: "presetFrostBody" },
@@ -428,6 +495,9 @@ html[data-platform="darwin"][data-next-material="transparent"] [data-dockkit-hos
       panels: readStore(PANELS_KEY) !== "0",
       deep: readStore(DEEP_KEY) === "1",
       tint: normalizeTint(readStore(TINT_KEY)) ?? DEFAULT_TINT,
+      bgMode: readStore(BG_KEY) === "wallpaper" ? "wallpaper" : "desktop",
+      bgName: readStore(BG_NAME_KEY) || "",
+      bgUrl: null,
     };
 
     const listeners = new Set();
@@ -440,6 +510,9 @@ html[data-platform="darwin"][data-next-material="transparent"] [data-dockkit-hos
           panels: state.panels,
           deep: state.deep,
           tint: state.tint,
+          bgMode: state.bgMode,
+          bgName: state.bgName,
+          bgUrl: state.bgUrl,
           defaultTint: DEFAULT_TINT,
           presets: PRESETS.map((preset) => preset.tint),
         });
@@ -492,6 +565,7 @@ html[data-platform="darwin"][data-next-material="transparent"] [data-dockkit-hos
       { id: STYLE_ID, css: CSS_CONTENT, wanted: () => state.enabled },
       { id: PANEL_STYLE_ID, css: PANEL_CSS_CONTENT, wanted: () => state.enabled && state.panels },
       { id: DEEP_STYLE_ID, css: DEEP_CSS_CONTENT, wanted: () => state.enabled && state.deep },
+      { id: BG_STYLE_ID, css: BG_CSS_CONTENT, wanted: () => state.enabled && state.bgMode === "wallpaper" && state.bgUrl !== null },
     ];
 
     function toggleSheet(id, css, wanted) {
@@ -527,6 +601,20 @@ html[data-platform="darwin"][data-next-material="transparent"] [data-dockkit-hos
       });
     }
 
+    /* The wallpaper picture travels as an inline custom property, for the
+       same reason the tint does: it must win over any stylesheet rule, and
+       it must disappear exactly when the sheet does. */
+    function applyBgInline() {
+      whenBodyReady(() => {
+        if (!document.body) return;
+        if (state.enabled && state.bgMode === "wallpaper" && state.bgUrl !== null) {
+          document.body.style.setProperty(BG_URL_VAR, 'url("' + state.bgUrl + '")');
+        } else {
+          document.body.style.removeProperty(BG_URL_VAR);
+        }
+      });
+    }
+
     function setTint(value) {
       const next = normalizeTint(value);
       if (next === null) return state.tint;
@@ -543,6 +631,7 @@ html[data-platform="darwin"][data-next-material="transparent"] [data-dockkit-hos
       writeStore(ENABLED_KEY, state.enabled ? "1" : "0");
       syncStylesheets();
       applyTintInline();
+      applyBgInline();
       emit();
       console.info(`[dsh-vibrancy-skin] enabled = ${state.enabled}`);
       return state.enabled;
@@ -564,6 +653,259 @@ html[data-platform="darwin"][data-next-material="transparent"] [data-dockkit-hos
       emit();
       console.info(`[dsh-vibrancy-skin] deep glass = ${state.deep}`);
       return state.deep;
+    }
+
+    /* =====================================================================
+       Background image (v1.5.0)
+
+       A local picture can replace the real desktop behind the glass. The
+       image never leaves the machine: it is decoded, downscaled to at most
+       BG_MAX_EDGE px on the long edge, re-encoded as WebP and kept in
+       IndexedDB. Only a freshly created blob: URL is ever handed to CSS.
+
+       Every browser API here is optional: the whole feature must degrade to
+       "not available" instead of throwing when object URLs, IndexedDB,
+       createImageBitmap or canvas are missing.
+       ===================================================================== */
+
+    function makeObjectUrl(blob) {
+      try {
+        const api =
+          (typeof window !== "undefined" && window && window.URL) ||
+          (typeof URL !== "undefined" ? URL : null);
+        if (api === null || api === undefined) return null;
+        if (typeof api.createObjectURL !== "function") return null;
+        return api.createObjectURL(blob);
+      } catch {
+        return null;
+      }
+    }
+
+    function revokeObjectUrl(url) {
+      if (url === null || url === undefined || url === "") return;
+      try {
+        const api =
+          (typeof window !== "undefined" && window && window.URL) ||
+          (typeof URL !== "undefined" ? URL : null);
+        if (api === null || api === undefined) return;
+        if (typeof api.revokeObjectURL === "function") api.revokeObjectURL(url);
+      } catch {}
+    }
+
+    /* The stub in smoke-test.mjs has no window.indexedDB and Node has no
+       global one either, so the lookup is fully guarded in both directions. */
+    function indexedDbApi() {
+      try {
+        if (typeof window !== "undefined" && window && window.indexedDB) return window.indexedDB;
+      } catch {}
+      try {
+        if (typeof indexedDB !== "undefined" && indexedDB) return indexedDB;
+      } catch {}
+      return null;
+    }
+
+    function openBgDb() {
+      return new Promise((resolve) => {
+        let request = null;
+        try {
+          const idb = indexedDbApi();
+          if (idb === null || typeof idb.open !== "function") {
+            resolve(null);
+            return;
+          }
+          request = idb.open(BG_DB_NAME, 1);
+        } catch {
+          resolve(null);
+          return;
+        }
+        if (request === null || request === undefined) {
+          resolve(null);
+          return;
+        }
+        request.onupgradeneeded = () => {
+          try {
+            const db = request.result;
+            if (db && db.objectStoreNames && !db.objectStoreNames.contains(BG_STORE)) {
+              db.createObjectStore(BG_STORE, { keyPath: "id" });
+            }
+          } catch {}
+        };
+        request.onsuccess = () => {
+          resolve(request.result || null);
+        };
+        request.onerror = () => resolve(null);
+        request.onblocked = () => resolve(null);
+      });
+    }
+
+    /* One connection per operation: the plugin has no long-lived lifecycle
+       hook, so opening, using and closing a connection keeps the code free
+       of state that could leak across reloads. Any failure resolves null. */
+    function withBgStore(mode, run) {
+      return new Promise((resolve) => {
+        openBgDb().then((db) => {
+          if (db === null || db === undefined) {
+            resolve(null);
+            return;
+          }
+          try {
+            const transaction = db.transaction(BG_STORE, mode);
+            const store = transaction.objectStore(BG_STORE);
+            let request = null;
+            try {
+              request = run(store);
+            } catch {
+              resolve(null);
+              return;
+            }
+            if (request === null || request === undefined) {
+              resolve(null);
+              return;
+            }
+            request.onsuccess = () => resolve(request.result ?? null);
+            request.onerror = () => resolve(null);
+            transaction.onerror = () => resolve(null);
+            transaction.onabort = () => resolve(null);
+          } catch {
+            resolve(null);
+          } finally {
+            try {
+              if (typeof db.close === "function") db.close();
+            } catch {}
+          }
+        });
+      });
+    }
+
+    async function persistBgImage(blob, name) {
+      try {
+        await withBgStore("readwrite", (store) =>
+          store.put({ id: BG_RECORD, blob, name, updatedAt: Date.now() }),
+        );
+        return true;
+      } catch {
+        return false;
+      }
+    }
+
+    async function deleteStoredBg() {
+      try {
+        await withBgStore("readwrite", (store) => store.delete(BG_RECORD));
+        return true;
+      } catch {
+        return false;
+      }
+    }
+
+    async function readStoredBg() {
+      try {
+        return (await withBgStore("readonly", (store) => store.get(BG_RECORD))) ?? null;
+      } catch {
+        return null;
+      }
+    }
+
+    function setBgMode(value) {
+      const next = value === "wallpaper" ? "wallpaper" : "desktop";
+      state.bgMode = next;
+      writeStore(BG_KEY, next);
+      syncStylesheets();
+      applyBgInline();
+      emit();
+      console.info(`[dsh-vibrancy-skin] background mode = ${next}`);
+      return next;
+    }
+
+    function setBgImage(blob, name) {
+      if (blob === null || blob === undefined || typeof blob !== "object" || typeof blob.size !== "number") {
+        return false;
+      }
+      const url = makeObjectUrl(blob);
+      if (url === null) return false;
+      revokeObjectUrl(state.bgUrl);
+      state.bgUrl = url;
+      state.bgName = typeof name === "string" ? name : "";
+      state.bgMode = "wallpaper";
+      writeStore(BG_KEY, "wallpaper");
+      writeStore(BG_NAME_KEY, state.bgName);
+      syncStylesheets();
+      applyBgInline();
+      emit();
+      try {
+        void persistBgImage(blob, state.bgName);
+      } catch {}
+      return true;
+    }
+
+    function clearBgImage() {
+      revokeObjectUrl(state.bgUrl);
+      state.bgUrl = null;
+      state.bgName = "";
+      state.bgMode = "desktop";
+      writeStore(BG_KEY, "desktop");
+      writeStore(BG_NAME_KEY, "");
+      syncStylesheets();
+      applyBgInline();
+      emit();
+      try {
+        void deleteStoredBg();
+      } catch {}
+      return true;
+    }
+
+    /* Rehydrates the blob: URL after a restart. Only runs when the last
+       session left the skin in wallpaper mode; every failure is silent, the
+       window simply keeps the desktop look. The second mode check covers the
+       case where the user switched back to "desktop" while IDB was opening. */
+    async function restoreBgImage() {
+      if (state.bgMode !== "wallpaper") return;
+      try {
+        const record = await readStoredBg();
+        if (record === null || record === undefined || !record.blob) return;
+        if (state.bgMode !== "wallpaper") return;
+        const url = makeObjectUrl(record.blob);
+        if (url === null) return;
+        revokeObjectUrl(state.bgUrl);
+        state.bgUrl = url;
+        if (typeof record.name === "string" && record.name !== "") state.bgName = record.name;
+        syncStylesheets();
+        applyBgInline();
+        emit();
+      } catch {
+        /* no IndexedDB / no record: silent */
+      }
+    }
+
+    /* Decode -> downscale -> WebP. Runs on the UI thread only on the file
+       pick, so the cost is paid once per chosen picture. */
+    async function compressImageFile(file) {
+      const createBitmap = typeof window !== "undefined" ? window.createImageBitmap : null;
+      if (typeof createBitmap !== "function") throw new Error("decode");
+      let bitmap;
+      try {
+        bitmap = await createBitmap.call(window, file, { imageOrientation: "from-image" });
+      } catch {
+        bitmap = await createBitmap.call(window, file);
+      }
+      try {
+        const scale = Math.min(1, BG_MAX_EDGE / Math.max(bitmap.width, bitmap.height));
+        const w = Math.max(1, Math.round(bitmap.width * scale));
+        const h = Math.max(1, Math.round(bitmap.height * scale));
+        const canvas = document.createElement("canvas");
+        canvas.width = w;
+        canvas.height = h;
+        const ctx2d = canvas.getContext("2d");
+        if (!ctx2d) throw new Error("canvas");
+        ctx2d.imageSmoothingQuality = "high";
+        ctx2d.drawImage(bitmap, 0, 0, w, h);
+        const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/webp", BG_QUALITY));
+        if (!blob) throw new Error("encode");
+        return blob;
+      } finally {
+        try {
+          if (bitmap && typeof bitmap.close === "function") bitmap.close();
+        } catch {}
+      }
     }
 
     /* =====================================================================
@@ -666,6 +1008,9 @@ html[data-platform="darwin"][data-next-material="transparent"] [data-dockkit-hos
       const numeric = Math.round(parseFloat(skin.tint) * 10) / 10;
       const [draft, setDraft] = react.useState(() => String(numeric));
       const lastExternal = react.useRef(numeric);
+      const inputRef = react.useRef(null);
+      const [busy, setBusy] = react.useState(false);
+      const [error, setError] = react.useState("");
 
       react.useEffect(() => {
         if (lastExternal.current === numeric) return;
@@ -695,6 +1040,127 @@ html[data-platform="darwin"][data-next-material="transparent"] [data-dockkit-hos
 
       const sidebar = hasBetterSidebar();
 
+      const pick = () => {
+        const input = inputRef.current;
+        if (input !== null && input !== undefined && typeof input.click === "function") input.click();
+      };
+
+      const onFile = async (event) => {
+        const target = event === null || event === undefined ? null : event.target;
+        const file = target && target.files && target.files.length > 0 ? target.files[0] : null;
+        if (target !== null && target !== undefined) {
+          try {
+            target.value = "";
+          } catch {}
+        }
+        if (!file) return;
+        if (file.size > BG_MAX_BYTES) {
+          setError("bgTooLarge");
+          return;
+        }
+        setBusy(true);
+        setError("");
+        try {
+          const blob = await compressImageFile(file);
+          if (!setBgImage(blob, typeof file.name === "string" ? file.name : "")) {
+            setError("bgDecodeFailed");
+          }
+        } catch (failure) {
+          setError("bgDecodeFailed");
+          console.error("[dsh-vibrancy-skin] background image failed", failure);
+        } finally {
+          setBusy(false);
+        }
+      };
+
+      const bgGroup = group(
+        "dsh-vibrancy-bg-title",
+        t("bgTitle"),
+        t("bgIntro"),
+        jsxs("div", {
+          children: [
+            jsxs("div", {
+              className: "dshDesktopSettingsList",
+              role: "radiogroup",
+              "aria-labelledby": "dsh-vibrancy-bg-title",
+              children: [
+                jsx(
+                  SkinChoice,
+                  {
+                    t,
+                    title: t("bgDesktopTitle"),
+                    body: t("bgDesktopBody"),
+                    selected: skin.bgMode !== "wallpaper",
+                    onSelect: () => setBgMode("desktop"),
+                  },
+                  "desktop",
+                ),
+                jsx(
+                  SkinChoice,
+                  {
+                    t,
+                    title: t("bgWallpaperTitle"),
+                    body: t("bgWallpaperBody"),
+                    selected: skin.bgMode === "wallpaper",
+                    onSelect: () => {
+                      setBgMode("wallpaper");
+                      if (!skin.bgUrl) pick();
+                    },
+                  },
+                  "wallpaper",
+                ),
+              ],
+            }),
+            skin.bgMode === "wallpaper"
+              ? skin.bgUrl !== null
+                ? jsx("img", {
+                    className: "dshVibrancyBgPreview",
+                    src: skin.bgUrl,
+                    alt: t("bgPreviewAlt"),
+                    style: {
+                      display: "block",
+                      maxWidth: "360px",
+                      maxHeight: "200px",
+                      objectFit: "cover",
+                      borderRadius: "10px",
+                    },
+                  })
+                : jsx("p", { className: "dshDesktopSettingsHint", children: t("bgEmpty") })
+              : null,
+            jsxs("div", {
+              className: "dshDesktopSettingsForm",
+              children: [
+                jsx("button", {
+                  type: "button",
+                  className: "dshDesktopSettingsButton",
+                  disabled: busy,
+                  onClick: pick,
+                  children: t(skin.bgUrl ? "bgReplace" : "bgPick"),
+                }),
+                skin.bgUrl !== null &&
+                  jsx("button", {
+                    type: "button",
+                    className: "dshDesktopSettingsButton",
+                    onClick: () => clearBgImage(),
+                    children: t("bgRemove"),
+                  }),
+              ],
+            }),
+            jsx("input", {
+              type: "file",
+              accept: "image/*",
+              ref: inputRef,
+              onChange: onFile,
+              style: { display: "none" },
+              tabIndex: -1,
+              "aria-hidden": "true",
+            }),
+            error !== "" && jsx("p", { className: "dshDesktopSettingsNotice", children: t(error) }),
+            jsx("p", { className: "dshDesktopSettingsHint", children: t("bgHint") }),
+          ],
+        }),
+      );
+
       return jsxs("div", {
         className: "dshDesktopSettings",
         children: [
@@ -714,6 +1180,8 @@ html[data-platform="darwin"][data-next-material="transparent"] [data-dockkit-hos
               }),
             }),
           ),
+
+          bgGroup,
 
           group("dsh-vibrancy-sidebar-title", t("sidebarTitle"), t("sidebarIntro"),
             jsxs("div", {
@@ -818,6 +1286,9 @@ html[data-platform="darwin"][data-next-material="transparent"] [data-dockkit-hos
           setEnabled,
           setPanels,
           setDeep,
+          setBgMode,
+          setBgImage,
+          clearBgImage,
           getState,
           subscribe,
           reset: () => setTint(""),
@@ -826,6 +1297,7 @@ html[data-platform="darwin"][data-next-material="transparent"] [data-dockkit-hos
             setPanels(true);
             setDeep(false);
             setEnabled(true);
+            setBgMode("desktop");
           },
         };
       } catch {}
@@ -839,6 +1311,7 @@ html[data-platform="darwin"][data-next-material="transparent"] [data-dockkit-hos
 
       whenBodyReady(() => {
         applyTintInline();
+        applyBgInline();
         expose();
         const body = document.body;
         const root = document.documentElement;
@@ -881,6 +1354,8 @@ html[data-platform="darwin"][data-next-material="transparent"] [data-dockkit-hos
        if the settings UI never comes up. */
     syncStylesheets();
     applyTintInline();
+    applyBgInline();
+    restoreBgImage();
 
     exports.inject = ["slots", "locale"];
     exports.apply = apply;

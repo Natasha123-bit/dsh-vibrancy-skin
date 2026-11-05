@@ -3,7 +3,8 @@
 **Install time:** 2026-09-28 03:28, redeployed **04:14** as v1.2.0, **05:47** as v1.3.0, then
 **06:12** as **v1.3.1**, **06:20** as the same 1.3.1 with the temporary diagnostic probe
 stripped back out, **2026-10-02 23:57 (+0800)** as **v1.3.2** (dialog/overlay opacity fix),
-and **2026-10-28 03:5x** as **v1.4.0** (DSH NEXT 2.0.20-next / dsh 0.2.1-rc.3 port)
+and **2026-10-28 03:5x** as **v1.4.0** (DSH NEXT 2.0.20-next / dsh 0.2.1-rc.3 port),
+and **2026-11-06** as **v1.5.0** (background image frost: wallpaper / desktop modes)
 **Source of truth:** this directory. `~/.dsh/profiles/desktop/node_modules/dsh-vibrancy-skin`
 is a **symlink to this directory**, so an edit here is already the installed copy — there is no
 copy step and no second place to keep in sync.
@@ -36,6 +37,49 @@ re-pointed at the new path (old directory kept as a symlink to it). No plugin co
   25 是**加那 2 条断言之前**（v1.3.1 时期）的数，当时忘记 +2。
 - **路径校正**：旧目录实际在 `/Users/leixiaokang/Documents/DSH-Default/.dsh-vibrancy-skin-old-20261004-033509`。
 - 顺手发现、**未动**（留作待办）：`.backup/LAST_BACKUP_TS` 仍写 `20260928-054614`，未反映 2026-10-04 的迁前备份。
+
+## v1.5.0 delta (background image: wallpaper / desktop modes)
+
+**需求（用户 2026-11-06）：** 「给皮肤插件加上上传图片功能，以获得带背景毛玻璃的效果
+（可选择是透到壁纸还是透到桌面）」。语义取 **A 方案**（用户确认）：
+
+* `desktop`（默认）= 与 v1.4.0 完全一致：玻璃后面是真实桌面；
+* `wallpaper` = 上传图铺满整窗做玻璃底图，磨砂面板透出这张图。
+
+**为什么不是让窗口材质再透一点（取证自 `app.asar`）：**
+宿主是独立 Node 进程（`lib/host.js`），没有 `BrowserWindow` 调用面；preload 只暴露**读**材质的
+`dsh-next:material`；窗口创建时 `vibrancy:"sidebar"` 写死，`main.js:874` 只在 `"sidebar"` 与
+`null` 之间切；Electron 二进制里搜得到 `under-page` 但没有可用入口。改系统壁纸属系统级副作用，不做。
+→ 只能由页面内一层 CSS 实现（`html`/`body`/`#root` 在 darwin 上本就透明）。
+
+**改动（只动 `client.js`，889 → 1364 行）：**
+
+| 位置 | 内容 |
+| --- | --- |
+| 第 4 张表 `BG_STYLE_ID="dsh-vibrancy-skin-bg-styles"` | 唯一选择器门控 `body::before`：`position:fixed; inset:-64px; z-index:-1; pointer-events:none; background-image:var(--dsh-vib-bg-image); background-size:cover; filter:blur(36px)` |
+| 装入条件 | `enabled && bgMode==="wallpaper" && bgUrl!==null`；任一不满足整张表不存在 |
+| 内联变量 | `body.style.setProperty("--dsh-vib-bg-image", 'url("blob:…")')`；`applyBgInline()` 同时处理移除 |
+| 存储 | IndexedDB `dsh-vibrancy-skin` / store `bg` / 记录 `image`（keyPath `id`，字段 `{id,blob,name,updatedAt}`） |
+| 压缩 | `createImageBitmap` 带 `imageOrientation:"from-image"` → canvas 长边 2048 → `toBlob("image/webp", 0.9)`；>30 MB 拒绝 |
+| 新状态 | `bgMode`（localStorage `:bg-mode`）、`bgName`（`:bg-name`），`bgUrl` 仅内存 objectURL |
+| API | `setBgMode` / `setBgImage` / `clearBgImage` / `restoreBgImage`；`getState()` 增三字段；`resetAll()` 回 desktop 但**不删图** |
+| 设置页 | 「背景图」组插在「外观」之后：两张 `SkinChoice` + 预览 + 选择/更换/移除 + 隐藏 file input + 错误 notice；zh/en 各 14 条新文案 |
+
+**刻意没做的事：** 不用 `backdrop-filter`（仍是红线）；不把 base64 塞进 CSS/localStorage（5 MB 上限）；
+不改系统壁纸/窗口材质；不碰第三方插件；图片只在本机解码存储，无网络请求。
+
+**验收（2026-11-06）：**
+* `node smoke-test.mjs` → **168 ✓ / 0 ✗**（新增 51 条：惰性装表、内联变量、objectURL 回收、
+  无 IDB 不抛、第 4 表独立审计、设置页 5 组 + zh/en 无缺 key）；
+* `bash verify.sh` → **36 ✓ / 0 ✗**（新增 7 条 BG 断言；§8 期望版本 1.5.0）；
+* `node visual-bg.mjs` → `/tmp/dsh-bg-preview.png`（1280×800）：橙/品红/青团透过三块面板可见，
+  无整片灰雾、无硬边；
+* 窗口内观感（选图 / 切模式 / 关总开关 / 重启恢复 / 移除）待用户 `Cmd+R` 后目视，清单在 README §5。
+* `client.js` md5 **`f15cd906692da4089e9871ac72d0beb5`**，与活体软链一致。
+
+**踩到的坑：** IDB 记录必须带 `keyPath:"id"`（否则 `store.get("image")` 取不到）；
+`setEnabled(false)` 时要同时 `applyBgInline()` 清内联变量，否则重开时变量残留；
+测试里 `role="radiogroup"` 会先命中新增的背景图组，强度组要靠 `aria-labelledby="dsh-vibrancy-strength-title"` 定位。
 
 ## v1.4.0 delta (port: DSH NEXT 2.0.20-next + @deepseek-ai/dsh 0.2.1-rc.3)
 
@@ -324,13 +368,18 @@ only after the host half has already loaded successfully.
 ## Design invariants (do not relax)
 
 1. No `backdrop-filter` anywhere — upstream states Chromium cannot blur the transparent
-   vibrancy window; in-window blur paints uniform grey fog.
-2. Material only — the stylesheet declares `background` and three custom properties, and
-   nothing else. Layout is untouched by construction.
+   vibrancy window; in-window blur paints uniform grey fog. (v1.5.0's background sheet uses
+   `filter: blur()` on the image layer only — it blurs its own pixels, never samples the window
+   behind it, so it is a different thing and stays.)
+2. Material only — sheets 1–3 declare `background` and three custom properties, and nothing
+   else. The background sheet (4) is the sole exception: it is a `pointer-events: none`
+   decoration layer and may use `position` / `inset` / `z-index` / `filter` / `background-*`.
+   Layout is untouched by construction.
 3. The tint is cycle-free — built from `--dsw-static-neutral-bluish-00/950`, never from
    `--dsw-alias-bg-base` (self-reference would blank the pane).
-4. Everything is scoped to `body[data-dsh-desktop-platform="darwin"][data-dsh-desktop-material="transparent"]`
-   so any failure degrades to the upstream opaque look instead of an unreadable window.
+4. Everything is scoped to `html[data-platform="darwin"][data-next-material="transparent"]`
+   (v1.3.2 and earlier: `body[data-dsh-desktop-*]`) so any failure degrades to the upstream
+   opaque look instead of an unreadable window.
 5. Third-party plugins are never modified, not even their shipped CSS. Only two things may be
    relied upon: (a) the plugin-owned attribute markers it writes itself
    (`[data-dsh-better-sidebar]`), and (b) the generic `--dsw-alias-*` tokens its author

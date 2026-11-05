@@ -105,8 +105,8 @@ echo "  if the line is absent, the client half was not served."
 echo "  UI confirmation: Settings -> 磨砂玻璃 / Vibrancy (a sibling of the built-in 桌面设置 page),"
 echo "  with the switches '侧边栏面板磨砂' (default on) and '深层玻璃' (default off)."
 
-echo "== 8. installed client half carries all three sheets =="
-for marker in dsh-vibrancy-skin-styles dsh-vibrancy-skin-panel-styles dsh-vibrancy-skin-deep-styles; do
+echo "== 8. installed client half carries all four sheets =="
+for marker in dsh-vibrancy-skin-styles dsh-vibrancy-skin-panel-styles dsh-vibrancy-skin-deep-styles dsh-vibrancy-skin-bg-styles; do
   grep -q "$marker" "$PKG/client.js" && ok "sheet id $marker" || bad "sheet id $marker missing"
 done
 grep -q 'data-dsh-better-sidebar' "$PKG/client.js" \
@@ -142,8 +142,27 @@ grep -qE ':is\(dialog, \[role="dialog"\], \[role="alertdialog"\]\)' "$PKG/client
 grep -qE 'backdrop-filter[[:space:]]*:' "$PKG/client.js" \
   && bad "a backdrop-filter declaration is present — must never be used (grey fog on a transparent vibrancy window)" \
   || ok "no backdrop-filter declaration (comments explaining why are fine)"
+# --- v1.5.0: background-image sheet + state keys -------------------------
+grep -q 'body::before' "$PKG/client.js" \
+  && ok "background sheet paints one body::before decoration layer" \
+  || bad "body::before decoration layer missing"
+grep -qE 'background-image:[[:space:]]*var\(--dsh-vib-bg-image\)' "$PKG/client.js" \
+  && ok "background-image is driven by var(--dsh-vib-bg-image)" \
+  || bad "--dsh-vib-bg-image wiring missing"
+grep -qE 'filter:[[:space:]]*blur\(36px\)' "$PKG/client.js" \
+  && ok "background picture is blurred at 36px (blur on the picture, never backdrop-filter)" \
+  || bad "blur(36px) on the background layer missing"
+grep -qE 'pointer-events:[[:space:]]*none' "$PKG/client.js" \
+  && ok "background layer is pointer-events: none" \
+  || bad "background layer missing pointer-events: none"
+grep -q 'dsh-vibrancy-skin:bg-mode' "$PKG/client.js" \
+  && ok "background mode persists under dsh-vibrancy-skin:bg-mode" \
+  || bad "bg-mode storage key missing"
+grep -q 'indexedDB' "$PKG/client.js" \
+  && ok "picture storage goes through IndexedDB (local only, never uploaded)" \
+  || bad "IndexedDB storage path missing"
 node -e '
 const v = require("'"$PKG"'/package.json").version;
-console.log((v === "1.4.0" ? "\u2713" : "\u2717") + " installed version = " + v + (v === "1.4.0" ? "" : " (expected 1.4.0)"));
+console.log((v === "1.5.0" ? "\u2713" : "\u2717") + " installed version = " + v + (v === "1.5.0" ? "" : " (expected 1.5.0)"));
 ' 2>&1 | sed 's/^/  /'
 

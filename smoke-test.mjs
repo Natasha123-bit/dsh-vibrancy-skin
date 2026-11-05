@@ -13,7 +13,12 @@
  *   4. the tint/enabled/sidebar state machine persists and re-applies correctly;
  *   5. the settings section is registered on the native `settings.section`
  *      slot with a native-shaped, fully localized element tree;
- *   6. all three stylesheets still declare material properties only.
+ *   6. all stylesheets still declare material properties only — including the
+ *      opt-in background-image sheet, which is audited separately because it
+ *      legitimately uses `position`/`inset`/`filter` (a decoration layer, not
+ *      a material retint);
+ *   7. the v1.5.0 background-image state machine (bgMode / bgUrl / sheet 4)
+ *      installs, persists, revokes object URLs and degrades without IndexedDB.
  *
  * Run: node smoke-test.mjs
  */
@@ -191,6 +196,44 @@ function walk(node, out = [], react = null) {
 
 const classNameOf = (node) => node?.props?.className;
 const byClass = (tree, className) => walk(tree).find((n) => classNameOf(n) === className);
+
+/** Brace-aware CSS parser shared by the sheet audits (J and M). */
+function parseRules(css) {
+  const stripped = css.replace(/\/\*[\s\S]*?\*\//g, "");
+  /* Top-level comma split only: selectors like
+     ':is(dialog, [role="dialog"], [role="alertdialog"])' contain commas that
+     must not be mistaken for selector-list separators. */
+  const splitSelectors = (text) => {
+    const out = [];
+    let depth = 0;
+    let current = "";
+    for (const ch of text) {
+      if (ch === "(" || ch === "[") depth += 1;
+      else if (ch === ")" || ch === "]") depth -= 1;
+      if (ch === "," && depth === 0) {
+        out.push(current);
+        current = "";
+        continue;
+      }
+      current += ch;
+    }
+    out.push(current);
+    return out.map((s) => s.trim()).filter((s) => s.length > 0);
+  };
+  const rules = [];
+  for (const m of stripped.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+    rules.push({ selectors: splitSelectors(m[1]), body: m[2] });
+  }
+  return { stripped, rules };
+}
+
+/** Property names declared anywhere in a rule body, deduped + sorted. */
+const declaredProps = (rules) =>
+  [
+    ...new Set(
+      rules.flatMap((r) => [...r.body.matchAll(/([a-zA-Z-][a-zA-Z0-9-]*)\s*:\s/g)].map((m) => m[1])),
+    ),
+  ].sort();
 
 /** A real-ish ctx stub, recording everything the plugin touches. */
 function makeCtx({ missingLocaleKeys }) {
@@ -380,7 +423,7 @@ console.log("H. the section renders a native-shaped, localized tree");
 
   check("root uses the native settings shell class", classNameOf(tree) === "dshDesktopSettings");
   check("has a page header", !!byClass(tree, "dshDesktopSettingsHeader"));
-  check("4 groups", nodes.filter((n) => classNameOf(n) === "dshDesktopSettingsGroup").length === 4);
+  check("5 groups (appearance / background / sidebar / strength / fine-tuning)", nodes.filter((n) => classNameOf(n) === "dshDesktopSettingsGroup").length === 5);
   check("native switch row", !!byClass(tree, "dshDesktopSettingsToggleRow"));
   const toggles = nodes.filter(
     (n) => classNameOf(n) === "dshDesktopSettingsToggle" && n.type === "button",
@@ -399,8 +442,13 @@ console.log("H. the section renders a native-shaped, localized tree");
   );
   check("sidebar switches are enabled while the skin is on", toggles[1]?.props?.disabled === false);
   check("has a native segmented list", !!byClass(tree, "dshDesktopSettingsList"));
+  /* v1.5.0 added a second radiogroup (background desktop/wallpaper) that also
+     uses .dshDesktopSettingsList, so pick the strength group by its label id. */
   const list = nodes.find(
-    (n) => classNameOf(n) === "dshDesktopSettingsList" && n.props.role === "radiogroup",
+    (n) =>
+      classNameOf(n) === "dshDesktopSettingsList" &&
+      n.props.role === "radiogroup" &&
+      n.props["aria-labelledby"] === "dsh-vibrancy-strength-title",
   );
   const choices = list.props.children;
   check("3 preset rows", choices.length === 3);
@@ -415,8 +463,8 @@ console.log("H. the section renders a native-shaped, localized tree");
   );
   const radios = nodes.filter((n) => n.props?.role === "radio");
   check(
-    "rows render as keyboard-accessible radios",
-    radios.length === 3 &&
+    "5 radios (3 presets + 2 background modes) are all keyboard-accessible",
+    radios.length === 5 &&
       radios.every(
         (r) => r.props.tabIndex === 0 && r.props["data-actionable"] === "true" && typeof r.props.onKeyDown === "function",
       ),
@@ -426,8 +474,16 @@ console.log("H. the section renders a native-shaped, localized tree");
   const input = byClass(tree, "dshDesktopSettingsInput");
   check("number input present with 0–100 bounds", input?.props?.type === "number" && input.props.min === "0" && input.props.max === "100");
   check("number input shows the current value", input?.props?.value === "40");
-  const button = byClass(tree, "dshDesktopSettingsButton");
-  check("reset button present and disabled at the default", button?.props?.disabled === true);
+  /* The reset button is not the first .dshDesktopSettingsButton any more:
+     the background group's pick/replace button comes first. Locate it by its
+     localized label instead of weakening the disabled semantics. */
+  const buttons = nodes.filter((n) => classNameOf(n) === "dshDesktopSettingsButton");
+  const button = buttons.find((n) => n.props.children === dict.reset);
+  check(
+    "reset button present and disabled at the default",
+    !!button && button.props.disabled === true,
+    `${buttons.length} button(s)`,
+  );
   check("hint line present", !!byClass(tree, "dshDesktopSettingsHint"));
   check("no missing locale key in zh", missing.length === 0, missing.join(", "));
   const missingEn = [];
@@ -460,35 +516,6 @@ console.log("J. every stylesheet touches material properties only");
   const WINDOW_SCOPE =
     'html[data-platform="darwin"][data-next-material="transparent"]';
 
-  const parseRules = (css) => {
-    const stripped = css.replace(/\/\*[\s\S]*?\*\//g, "");
-    /* Top-level comma split only: selectors like
-       ':is(dialog, [role="dialog"], [role="alertdialog"])' contain commas that
-       must not be mistaken for selector-list separators. */
-    const splitSelectors = (text) => {
-      const out = [];
-      let depth = 0;
-      let current = "";
-      for (const ch of text) {
-        if (ch === "(" || ch === "[") depth += 1;
-        else if (ch === ")" || ch === "]") depth -= 1;
-        if (ch === "," && depth === 0) {
-          out.push(current);
-          current = "";
-          continue;
-        }
-        current += ch;
-      }
-      out.push(current);
-      return out.map((s) => s.trim()).filter((s) => s.length > 0);
-    };
-    const rules = [];
-    for (const m of stripped.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
-      rules.push({ selectors: splitSelectors(m[1]), body: m[2] });
-    }
-    return { stripped, rules };
-  };
-
   const auditSheet = (label, css, allowed) => {
     const { stripped, rules } = parseRules(css);
     check(
@@ -497,9 +524,7 @@ console.log("J. every stylesheet touches material properties only");
         rules.every((r) => r.selectors.every((s) => s.startsWith(WINDOW_SCOPE))),
       `${rules.length} rule(s)`,
     );
-    const props = [
-      ...new Set(rules.flatMap((r) => [...r.body.matchAll(/([a-zA-Z-][a-zA-Z0-9-]*)\s*:\s/g)].map((m) => m[1]))),
-    ].sort();
+    const props = declaredProps(rules);
     check(`${label}: material-only declarations`, JSON.stringify(props) === JSON.stringify(allowed), props.join(", "));
     check(`${label}: no backdrop-filter`, !/backdrop-filter\s*:/.test(stripped));
     check(
@@ -690,6 +715,294 @@ console.log("L. the sidebar group degrades gracefully without dsh-better-sidebar
     notices.some((n) => n.props.children === dicts.zh.sidebarMissing),
   );
   check("still renders all 3 switches", nodes.filter((n) => classNameOf(n) === "dshDesktopSettingsToggle").length === 3);
+}
+
+console.log("M. background image: sheet 4, state machine, settings group");
+{
+  const BG_ID = "dsh-vibrancy-skin-bg-styles";
+  const BG_VAR = "--dsh-vib-bg-image";
+  const BG_SELECTOR =
+    'html[data-platform="darwin"][data-next-material="transparent"] body::before';
+  /* The decoration layer legitimately uses position/inset/filter/z-index —
+     it must not be run through J's "no layout property" regex. */
+  const BG_ALLOWED = [
+    "background-image",
+    "background-position",
+    "background-repeat",
+    "background-size",
+    "content",
+    "filter",
+    "inset",
+    "pointer-events",
+    "position",
+    "z-index",
+  ];
+
+  /** Deterministic objectURL pair; every call is recorded for revoke checks. */
+  const stubObjectUrl = (env) => {
+    const created = [];
+    const revoked = [];
+    let next = 0;
+    env.win.URL = {
+      createObjectURL(blob) {
+        const url = `blob:test-${++next}`;
+        created.push({ url, blob });
+        return url;
+      },
+      revokeObjectURL(url) {
+        revoked.push(url);
+      },
+    };
+    return { created, revoked };
+  };
+
+  const blob = { size: 3, type: "image/png" };
+
+  // (a) default boot: desktop, no picture -> no sheet, no inline property.
+  {
+    const env = makeEnv({ withBody: true });
+    env.module();
+    check(
+      "bg: a default boot installs no background sheet",
+      env.headChildren.length === 2 && env.document.getElementById(BG_ID) === null,
+      env.headChildren.map((e) => e.id).join(", "),
+    );
+    check("bg: a default boot leaves --dsh-vib-bg-image unset", env.props.get(BG_VAR) === undefined);
+  }
+
+  // (b) wallpaper without a picture is inert.
+  {
+    const env = makeEnv({ withBody: true });
+    const exported = env.module();
+    exported.apply(makeCtx({}).ctx);
+    const api = env.win.dshVibrancySkin;
+    check("bg: setBgMode('wallpaper') returns the new mode", api.setBgMode("wallpaper") === "wallpaper");
+    check("bg: wallpaper without a picture installs no sheet", env.document.getElementById(BG_ID) === null);
+    check("bg: getState reports the wallpaper mode", api.getState().bgMode === "wallpaper");
+    check("bg: the wallpaper choice is persisted", env.store.get("dsh-vibrancy-skin:bg-mode") === "wallpaper");
+    check("bg: wallpaper without a picture keeps the inline property unset", env.props.get(BG_VAR) === undefined);
+  }
+
+  // (c)-(f) one session walks the whole picture lifecycle.
+  {
+    const env = makeEnv({ withBody: true });
+    const exported = env.module();
+    exported.apply(makeCtx({}).ctx);
+    const api = env.win.dshVibrancySkin;
+    const urls = stubObjectUrl(env);
+
+    check("bg: setBgImage accepts a blob-shaped file", api.setBgImage(blob, "x.png") === true);
+    const sheet = env.document.getElementById(BG_ID);
+    check("bg: sheet 4 appears with the expected id", sheet !== null && sheet.id === BG_ID);
+    check('bg: body carries the picture as url("blob:...")', env.props.get(BG_VAR) === 'url("blob:test-1")', env.props.get(BG_VAR));
+    check(
+      "bg: state reports wallpaper mode + the file name",
+      api.getState().bgMode === "wallpaper" && api.getState().bgName === "x.png" && api.getState().bgUrl === "blob:test-1",
+    );
+    check("bg: the mode is persisted as wallpaper", env.store.get("dsh-vibrancy-skin:bg-mode") === "wallpaper");
+    check("bg: the file name is persisted", env.store.get("dsh-vibrancy-skin:bg-name") === "x.png");
+    check(
+      "bg: a second pick revokes the previous object URL",
+      api.setBgImage(blob, "y.png") === true && JSON.stringify(urls.revoked) === JSON.stringify(["blob:test-1"]),
+      urls.revoked.join(", "),
+    );
+    check("bg: a second pick swaps the inline URL", env.props.get(BG_VAR) === 'url("blob:test-2")');
+
+    check("bg: setEnabled(false) removes sheet 4", api.setEnabled(false) === false && env.document.getElementById(BG_ID) === null);
+    check("bg: setEnabled(false) clears the inline property", env.props.get(BG_VAR) === undefined);
+    check(
+      "bg: setEnabled(true) restores sheet 4 and the picture",
+      api.setEnabled(true) === true &&
+        env.document.getElementById(BG_ID) !== null &&
+        env.props.get(BG_VAR) === 'url("blob:test-2")',
+    );
+
+    check(
+      "bg: setBgMode('desktop') removes sheet 4",
+      api.setBgMode("desktop") === "desktop" && env.document.getElementById(BG_ID) === null,
+    );
+    check("bg: setBgMode('desktop') clears the inline property", env.props.get(BG_VAR) === undefined);
+
+    api.setBgImage(blob, "z.png");
+    check("bg: clearBgImage removes sheet 4", api.clearBgImage() === true && env.document.getElementById(BG_ID) === null);
+    const cleared = api.getState();
+    check(
+      "bg: clearBgImage resets url/name/mode",
+      cleared.bgUrl === null && cleared.bgName === "" && cleared.bgMode === "desktop",
+      `bgUrl=${cleared.bgUrl} bgName=${cleared.bgName} bgMode=${cleared.bgMode}`,
+    );
+    check("bg: clearBgImage revokes the live object URL", urls.revoked.at(-1) === "blob:test-3", urls.revoked.join(", "));
+    check(
+      "bg: clearBgImage persists the desktop mode and forgets the name",
+      env.store.get("dsh-vibrancy-skin:bg-mode") === "desktop" && env.store.get("dsh-vibrancy-skin:bg-name") === "",
+    );
+  }
+
+  // (g) boot without IndexedDB must stay silent (the stub has none).
+  {
+    const env = makeEnv({ withBody: true });
+    env.store.set("dsh-vibrancy-skin:bg-mode", "wallpaper");
+    let threw = null;
+    try {
+      env.module();
+    } catch (error) {
+      threw = error;
+    }
+    check("bg: a wallpaper boot without IndexedDB does not throw", threw === null, threw ? String(threw) : "");
+    check(
+      "bg: without IndexedDB the sheet stays absent (desktop look, no error)",
+      env.headChildren.length === 2 && env.document.getElementById(BG_ID) === null,
+    );
+  }
+
+  // (h) independent audit of sheet 4 (it is a decoration layer, not a retint).
+  {
+    const env = makeEnv({ withBody: true });
+    const exported = env.module();
+    exported.apply(makeCtx({}).ctx);
+    stubObjectUrl(env);
+    env.win.dshVibrancySkin.setBgImage(blob, "x.png");
+    const css = env.document.getElementById(BG_ID).textContent;
+    const { stripped, rules } = parseRules(css);
+    check("bg sheet: exactly one rule", rules.length === 1, `${rules.length} rule(s)`);
+    check(
+      "bg sheet: the only selector is the gated body::before layer",
+      rules.length === 1 &&
+        rules[0].selectors.length === 1 &&
+        rules[0].selectors[0] === BG_SELECTOR,
+      rules.map((r) => r.selectors.join(" | ")).join(" ; "),
+    );
+    const props = declaredProps(rules);
+    check(
+      "bg sheet: declarations stay inside the decoration allowlist",
+      props.length > 0 && props.every((p) => BG_ALLOWED.includes(p)),
+      props.join(", "),
+    );
+    check(
+      "bg sheet: fixed, inset, z-index -1 (behind the window content)",
+      /position:\s*fixed/.test(stripped) && /inset:\s*-64px/.test(stripped) && /z-index:\s*-1/.test(stripped),
+    );
+    check("bg sheet: pointer-events: none", /pointer-events:\s*none/.test(stripped));
+    check("bg sheet: picture blurred at 36px", /filter:\s*blur\(36px\)/.test(stripped));
+    check(
+      "bg sheet: picture comes from the inline variable, cover/center/no-repeat",
+      /background-image:\s*var\(--dsh-vib-bg-image\)/.test(stripped) &&
+        /background-size:\s*cover/.test(stripped) &&
+        /background-position:\s*center/.test(stripped) &&
+        /background-repeat:\s*no-repeat/.test(stripped),
+    );
+    check("bg sheet: no backdrop-filter", !/backdrop-filter\s*:/.test(stripped));
+    check(
+      "bg sheet: no layout property beyond the decoration layer",
+      !/\b(width|height|display|padding|margin|overflow|border-radius|grid-template)\s*:/.test(stripped),
+    );
+    check("bg sheet: braces balanced", (stripped.match(/{/g) || []).length === (stripped.match(/}/g) || []).length);
+  }
+
+  // (i) settings: the new background group and its three UI states.
+  {
+    const env = makeEnv({ withBody: true });
+    const exported = env.module();
+    const { ctx, calls } = makeCtx({});
+    exported.apply(ctx);
+    const { dicts } = calls.localeRegister[0];
+    const dict = dicts.zh;
+    const missing = [];
+    const t = (key) => {
+      if (!(key in dict)) missing.push(key);
+      return dict[key] ?? key;
+    };
+    const missingEn = [];
+    const tEn = (key) => {
+      if (!(key in dicts.en)) missingEn.push(key);
+      return dicts.en[key] ?? key;
+    };
+    stubObjectUrl(env);
+
+    const render = (translate) => {
+      env.react.beginRender();
+      CURRENT_REACT = env.react;
+      const tree = calls.slotRegister[0].component({ t: translate });
+      return { tree, nodes: walk(tree) };
+    };
+
+    let { nodes } = render(t);
+    const groups = nodes.filter((n) => classNameOf(n) === "dshDesktopSettingsGroup");
+    check("bg group: the section now has 5 groups", groups.length === 5, `${groups.length} group(s)`);
+    check(
+      "bg group: sits between appearance and sidebar",
+      groups[1]?.props?.["aria-labelledby"] === "dsh-vibrancy-bg-title" &&
+        groups[0]?.props?.["aria-labelledby"] === "dsh-vibrancy-appearance-title" &&
+        groups[2]?.props?.["aria-labelledby"] === "dsh-vibrancy-sidebar-title",
+    );
+    const bgSection = nodes.find(
+      (n) =>
+        classNameOf(n) === "dshDesktopSettingsGroup" &&
+        n.props["aria-labelledby"] === "dsh-vibrancy-bg-title",
+    );
+    const bgNodes = walk(bgSection);
+    const bgList = bgNodes.find(
+      (n) => classNameOf(n) === "dshDesktopSettingsList" && n.props["aria-labelledby"] === "dsh-vibrancy-bg-title",
+    );
+    check("bg group: exposes a radiogroup with two choices", bgList?.props?.role === "radiogroup" && bgList.props.children.length === 2);
+    check(
+      "bg group: both radio labels resolve through t()",
+      bgList.props.children[0].props.title === dict.bgDesktopTitle &&
+        bgList.props.children[1].props.title === dict.bgWallpaperTitle,
+      bgList.props.children.map((c) => c.props.title).join(", "),
+    );
+    check(
+      "bg group: desktop is the selected mode by default",
+      bgList.props.children[0].props.selected === true && bgList.props.children[1].props.selected === false,
+    );
+    const fileInput = bgNodes.find((n) => n.type === "input");
+    check(
+      "bg group: a hidden image file input is present",
+      fileInput?.props?.type === "file" &&
+        fileInput.props.accept === "image/*" &&
+        fileInput.props.style?.display === "none",
+    );
+    check("bg group: no preview while the desktop mode is active", bgNodes.every((n) => classNameOf(n) !== "dshVibrancyBgPreview"));
+
+    // wallpaper without a picture -> bgEmpty hint, still no preview
+    env.win.dshVibrancySkin.setBgMode("wallpaper");
+    ({ nodes } = render(t));
+    const emptyHints = nodes.filter(
+      (n) => classNameOf(n) === "dshDesktopSettingsHint" && n.props.children === dict.bgEmpty,
+    );
+    check("bg group: wallpaper without a picture explains bgEmpty", emptyHints.length === 1);
+    check(
+      "bg group: wallpaper without a picture keeps the pick button",
+      nodes.some(
+        (n) => classNameOf(n) === "dshDesktopSettingsButton" && n.props.children === dict.bgPick,
+      ),
+    );
+
+    // picture picked -> preview img + replace/remove buttons
+    env.win.dshVibrancySkin.setBgImage(blob, "x.png");
+    ({ nodes } = render(t));
+    const preview = nodes.find((n) => classNameOf(n) === "dshVibrancyBgPreview");
+    check("bg group: a picked picture renders the preview image", preview?.type === "img" && preview.props.src === "blob:test-1");
+    check("bg group: preview alt resolves through t()", preview?.props?.alt === dict.bgPreviewAlt);
+    check(
+      "bg group: preview inline style stays positional-only",
+      JSON.stringify(Object.keys(preview.props.style).sort()) ===
+        JSON.stringify(["borderRadius", "display", "maxHeight", "maxWidth", "objectFit"]),
+      Object.keys(preview.props.style).join(", "),
+    );
+    const bgButtons = nodes
+      .filter((n) => classNameOf(n) === "dshDesktopSettingsButton")
+      .map((n) => n.props.children);
+    check(
+      "bg group: replace + remove buttons appear once a picture exists",
+      bgButtons.includes(dict.bgReplace) && bgButtons.includes(dict.bgRemove),
+      bgButtons.join(" | "),
+    );
+
+    ({ nodes } = render(tEn));
+    check("bg group: no missing locale key in zh", missing.length === 0, [...new Set(missing)].join(", "));
+    check("bg group: no missing locale key in en", missingEn.length === 0, [...new Set(missingEn)].join(", "));
+  }
 }
 
 console.log(failures === 0 ? "\nALL CHECKS PASSED" : `\n${failures} CHECK(S) FAILED`);

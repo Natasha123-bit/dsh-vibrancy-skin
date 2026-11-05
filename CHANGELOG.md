@@ -15,12 +15,32 @@
 | v1.3.0 | ✗ | 不可复原，**不打 tag** |
 | v1.3.1 | ✗ | 不可复原，**不打 tag** |
 | **v1.3.2** | ✓ | 打 tag `v1.3.2` |
-| **v1.4.0** | ✓ | 当前 HEAD（DSH NEXT 适配） |
+| **v1.4.0** | ✓ | DSH NEXT 适配；未打 tag |
+| **v1.5.0** | ✓ | 当前 HEAD（背景图磨砂） |
 
 **不按文档"重建" v1.3.0 / v1.3.1**：重建物与当时实际运行的代码不是同一个东西，写进历史会污染「能回滚」的语义。
 它们是本仓库建立之前就存在的缺口，不是迁移造成的；迁移唯一新增的好处是 **v1.2.0 之后的每一版都会真正留痕**。
 
 ---
+
+## 2026-11-06 — v1.5.0：背景图磨砂（透到壁纸 / 透到桌面）
+
+- **触发**：用户要求「给皮肤插件加上上传图片功能，以获得带背景毛玻璃的效果
+  （可选择是透到壁纸还是透到桌面）」。语义确认为：壁纸 = 上传图铺满整窗做玻璃底图；
+  桌面 = 不铺图、透真实桌面（v1.4.0 现状）。
+- **为什么只能页面内做**：宿主进程（`app.asar/lib/host.js`）是独立 Node，无 `BrowserWindow`；
+  preload 只暴露读材质的 `dsh-next:material`；窗口创建时 `vibrancy:"sidebar"` 写死。
+  改系统壁纸属系统级副作用，不做。
+- **改动**：新增第 4 张样式表（`body::before` 全屏装饰层，`inset:-64px`、`z-index:-1`、
+  `pointer-events:none`、`filter:blur(36px)`、底图走内联变量 `--dsh-vib-bg-image`）；
+  上传 → `createImageBitmap` → canvas 长边 2048 → WebP 0.9 → IndexedDB（db `dsh-vibrancy-skin` /
+  store `bg` / 记录 `image`）；新增 `setBgMode` / `setBgImage` / `clearBgImage` / `restoreBgImage`；
+  设置页新增「背景图」组（两张模式卡片 + 预览 + 选择/更换/移除，zh/en 各 14 条文案）。
+  `client.js` 889 → 1364 行，只动 `client.js`。
+- **验收**：`node smoke-test.mjs` **168 ✓ / 0 ✗**；`bash verify.sh` **36 ✓ / 0 ✗**；
+  `node visual-bg.mjs` 出样张 `/tmp/dsh-bg-preview.png`（无灰雾、无硬边）。
+  窗口内观感待用户 `Cmd+R` 目视确认。版本号三处同步（`package.json` / `verify.sh` §8 / 文档）。
+- **未改**：无 `backdrop-filter`、无 `peerDependencies`、不碰第三方插件、无网络请求。
 
 ## 2026-10-28 — v1.4.0：适配 DSH NEXT（2.0.20-next / `@deepseek-ai/dsh` 0.2.1-rc.3）
 
