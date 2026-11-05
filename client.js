@@ -199,6 +199,70 @@ html[data-platform="darwin"][data-next-material="transparent"] :is(dialog, [role
 html[data-platform="darwin"][data-next-material="transparent"] [class*="_markdown_"] :not(pre) > code {
   background-color: color-mix(in srgb, var(--dsw-alias-markdown-inline-code, #808080) 45%, transparent);
 }
+
+/* --- 6. Surfaces the theme keeps opaque ---------------------------------
+   These five surfaces paint their own opaque fill and still read as solid
+   holes in the frost. Every rule below changes only a colour (or a colour
+   token) and leaves layout alone; none of them samples the window behind
+   the pane, so backdrop-filter is not involved anywhere here.
+
+   6a. User bubble — upstream paints .VnbZpq_bubble with
+   var(--dsw-specific-bubble) and nothing else consumes that token, so
+   re-pointing it on body stays local. body[data-ds-dark-theme] is the only
+   dark switch upstream uses, same as rule 1. 58% keeps the bubble readable
+   while the frost shows through.
+   6b. Composer card — [data-composer-card] paints
+   var(--dsw-specific-input-major); 64% keeps typed text legible.
+   6c. Changed-files card — the card paints var(--dsw-alias-bg-layer-1); its
+   header and hover use the local --changes-fill / --changes-hover tokens
+   (neutral-50 / neutral-100 in light, neutral-850 / neutral-800 in dark).
+   6d. Cost meter — the sidebar summary card is layer-1 at 44%; its inner
+   boxes are made transparent so the card owns the single fill, while a
+   standalone .cm-bbox (rail / dialogs) keeps a 50% fallback. .cm-chip and
+   the "cost details" button get 42% / 46% so the meter reads as one
+   translucent family. */
+html[data-platform="darwin"][data-next-material="transparent"] body {
+  --dsw-specific-bubble: color-mix(in srgb, var(--dsw-static-deepseek-50) 58%, transparent);
+}
+
+html[data-platform="darwin"][data-next-material="transparent"] body[data-ds-dark-theme] {
+  --dsw-specific-bubble: color-mix(in srgb, var(--dsw-static-neutral-bluish-850) 58%, transparent);
+}
+
+html[data-platform="darwin"][data-next-material="transparent"] [data-composer-card] {
+  background: color-mix(in srgb, var(--dsw-specific-input-major) 64%, transparent);
+}
+
+html[data-platform="darwin"][data-next-material="transparent"] [data-changed-files] {
+  background: color-mix(in srgb, var(--dsw-alias-bg-layer-1) 52%, transparent);
+  --changes-fill: color-mix(in srgb, var(--dsw-static-neutral-50) 52%, transparent);
+  --changes-hover: color-mix(in srgb, var(--dsw-static-neutral-100) 70%, transparent);
+}
+
+html[data-platform="darwin"][data-next-material="transparent"] body[data-ds-dark-theme] [data-changed-files] {
+  --changes-fill: color-mix(in srgb, var(--dsw-static-neutral-850) 52%, transparent);
+  --changes-hover: color-mix(in srgb, var(--dsw-static-neutral-800) 70%, transparent);
+}
+
+html[data-platform="darwin"][data-next-material="transparent"] .cm-footer-stack.summary:not(.rail) {
+  background: color-mix(in srgb, var(--dsw-alias-bg-layer-1) 44%, transparent);
+}
+
+html[data-platform="darwin"][data-next-material="transparent"] .cm-footer-stack.summary:not(.rail) .cm-bbox {
+  background: transparent;
+}
+
+html[data-platform="darwin"][data-next-material="transparent"] .cm-bbox {
+  background: color-mix(in srgb, var(--dsw-alias-bg-layer-1) 50%, transparent);
+}
+
+html[data-platform="darwin"][data-next-material="transparent"] .cm-chip {
+  background: color-mix(in srgb, var(--dsw-alias-bg-layer-2) 42%, transparent);
+}
+
+html[data-platform="darwin"][data-next-material="transparent"] .cm-btn.cm-stat-entry {
+  background: color-mix(in srgb, var(--dsw-alias-button-elevated-fill) 46%, transparent);
+}
 `;
 
     /* ======================================================================

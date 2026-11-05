@@ -10,12 +10,12 @@ DSH Desktop 的**纯 CSS 注入插件**：没有构建步骤、没有依赖、�
 
 | 文件 | 作用 |
 | --- | --- |
-| `client.js` | **唯一的真源码**：全部逻辑 + 四张样式表（sheet 1 基础层 / sheet 2 面板层 / sheet 3 深层玻璃 / sheet 4 背景图装饰层） |
+| `client.js` | **唯一的真源码**：全部逻辑 + 四张样式表（sheet 1 基础层，含 v1.5.2 半透明表面 / sheet 2 面板层 / sheet 3 深层玻璃 / sheet 4 背景图装饰层） |
 | `index.js` | 宿主侧插件入口（极小） |
 | `package.json` | manifest：`dsh.client.platform` / `dsh.bundle.patch` / `exports["./client"]` / `version` |
 | `cordis.patch.yml` | 插件管理器用的挂载补丁 |
-| `smoke-test.mjs` | 纯静态断言（当前 204 条），改 `client.js` 必跑 |
-| `verify.sh` | 活体安装核对（当前 **42** 项）：源码↔安装 md5、profile 挂载、宿主日志（`~/.dsh/logs/desktop-next.log`）、sheet 完整性、NEXT 门控与锚点、背景图层、版本号 |
+| `smoke-test.mjs` | 纯静态断言（当前 221 条），改 `client.js` 必跑 |
+| `verify.sh` | 活体安装核对（当前 **62** 项）：源码↔安装 md5、profile 挂载、宿主日志（`~/.dsh/logs/desktop-next.log`）、sheet 完整性、NEXT 门控与锚点、背景图层、版本号 |
 | `visual-bg.mjs` | 背景图表的视觉样张（headless Chromium，输出 `/tmp/dsh-bg-preview.png`），不参与验收门禁 |
 | `rollback.sh` | 回滚辅助 |
 | `README.md` | 设计不变量 + 逐条实证（§1.x 解释「为什么这样改」） |
@@ -36,7 +36,7 @@ DSH Desktop 的**纯 CSS 注入插件**：没有构建步骤、没有依赖、�
 ## 硬规则
 
 1. **绝不跑 `pnpm install`**（在 profile 里跑过一次并炸出 `ERR_PNPM_UNEXPECTED_STORE`）。挂载靠软链，不靠安装。
-2. 改 `client.js` 后必须两条都绿：`node smoke-test.mjs`（204/204）与 `bash verify.sh`（42 项）；
+2. 改 `client.js` 后必须两条都绿：`node smoke-test.mjs`（221/221）与 `bash verify.sh`（62 项）；
    再确认 `md5 -q client.js` 与 `~/.dsh/profiles/desktop/node_modules/dsh-vibrancy-skin/client.js` 一致。
 3. **禁止 `backdrop-filter`**：在透明 vibrancy 窗口上会变成灰雾（`verify.sh` 有专门断言，写了就红）。
    背景图那层的 `filter: blur()` 只模糊图片自己的像素，不是采样窗口后面，别混为一谈（见 README §1.3）。
@@ -54,10 +54,14 @@ DSH Desktop 的**纯 CSS 注入插件**：没有构建步骤、没有依赖、�
 
 ## 当前状态（2026-11-06）
 
-- 版本 **v1.5.1**，`client.js` md5 `7ee155e1194ef5422b57cd6d8d96489d`（1476 行）；git `main`，tag `v1.2.0` / `v1.3.2`，**无远端**。
+- 版本 **v1.5.2**，`client.js` md5 `50495a6766bc68cba68010e9003716a4`（1540 行）；git `main`，tag `v1.2.0` / `v1.3.2`，**无远端**。
 - 环境（2026-10-28）：**DSH NEXT 2.0.20-next**（Electron 44.7.0 / Node 24.21.0）/
   `@deepseek-ai/dsh*` **0.2.1-rc.3**；`@deepseek-ai/*` 从 `app.asar/node_modules` 解析。
   本插件对 0.2.x 无需豁免，profile 里没有 `compatibility.json`。
+- **v1.5.2 是五处表面半透明**：用户气泡 58%、输入框 64%、文件编辑块 52%（hover 70%）、
+  cost 侧栏卡片 44% + 内层透明、`cm-bbox` 50% 兜底、`cm-chip` 42%、`cm-stat-entry` 46%，
+  全部 `color-mix` 原 token。静态侧验收 221/221 + 62/0，临时 mock 样张通过；窗口观感待用户 `Cmd+R`。
+  详见 STATE.md 的 v1.5.2 delta。
 - **v1.5.1 是磨砂度 + 行内代码**：第 4 张表改用 `blur(var(--dsh-vib-frost, 36px))`，设置页新增
   「磨砂度」0–100 滑杆（`desktop` 模式下置灰）；sheet 1 把行内代码背景改成 45% `color-mix` 半透明
   （围栏代码块不动）。静态侧验收 204/204 + 42/0。详见 STATE.md 的 v1.5.1 delta。
@@ -70,8 +74,8 @@ DSH Desktop 的**纯 CSS 注入插件**：没有构建步骤、没有依赖、�
   窗口观感待用户 `Cmd+R` 确认。详见 STATE.md 的 v1.4.0 delta。
 - **v1.3.2 验收通过（2026-10-04，用户确认）**：dsh-cost-meter「费用明细」面板实心可读、弹层不透明
   （README §5 那两条已改 `[x]`）。清单里仍剩 9 条 `[ ]`，属"顺手扫一眼"级别，不影响已达成效果。
-- 计数基线（2026-11-06 实测校正）：`smoke-test.mjs` **204** 条、`verify.sh` **42** 项。
-  历史值：v1.5.0 为 168 / 36，v1.4.0 为 117 / 29，v1.3.2 为 112 / 27；`verify.sh` 的条数会随 `~/.dsh/logs`
+- 计数基线（2026-11-06 实测校正）：`smoke-test.mjs` **221** 条、`verify.sh` **62** 项。
+  历史值：v1.5.1 为 204 / 42，v1.5.0 为 168 / 36，v1.4.0 为 117 / 29，v1.3.2 为 112 / 27；`verify.sh` 的条数会随 `~/.dsh/logs`
   里存在几个日志文件浮动（每存在一个文件 +2 条），所以以 `grep -c ✓` / `✗` 的实测为准，不要按文档倒推。
 - 已知、**未动**的陈旧元数据：`.backup/LAST_BACKUP_TS` 仍写 `20260928-054614`（没反映 2026-10-04 迁前备份）；
   profile 侧 `pnpm-lock.yaml` / `node_modules/.pnpm/lock.yaml` / `.package-map.json` 仍写旧 `link:` 路径

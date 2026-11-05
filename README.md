@@ -2,7 +2,8 @@
 
 macOS 原生 Vibrancy（磨砂玻璃）材质皮肤，用于 DSH NEXT / DSH Desktop 的**会话面板**，
 并为第三方侧边栏插件（dsh-better-sidebar）提供同款磨砂，**两级效果各自独立开关**；
-v1.5.0 起还可以上传一张本地图片当玻璃底图（「透到壁纸」/「透到桌面」）。
+v1.5.0 起还可以上传一张本地图片当玻璃底图（「透到壁纸」/「透到桌面」）；
+v1.5.2 起把气泡、输入框、文件块与 cost-meter 的卡片/控件也改成同族半透明（§1.4）。
 **只改材质，不改布局**：前三张样式表只触碰 `background` 与自定义属性；第四张（背景图）
 只画一个 `body::before` 装饰层（`position` / `inset` / `z-index` / `filter` / `background-*`，
 `pointer-events:none`），不参与布局，不碰任何 grid / 尺寸 / 圆角 / 内边距 / 溢出。
@@ -331,6 +332,45 @@ html[data-platform="darwin"][data-next-material="transparent"] [class*="_markdow
 - 保留上游的细边框，块仍有边界；`padding` / `border-radius` 一律不碰（只改材质）。
 - **围栏代码块（```）不动**：大块代码需要稳定底色保证可读性。
 
+## 1.4 半透明表面（v1.5.2）：五处「实心块」为什么还扎眼，怎么改
+
+v1.5.0 / v1.5.1 之后，壁纸能透出来了，但有五类表面仍然是一块**实心色**：
+
+| # | 表面 | 谁画的 | 上游底色 | v1.5.2 改成 |
+| --- | --- | --- | --- | --- |
+| 1 | 用户消息气泡 | dsh-client-ui-chat | `--dsw-specific-bubble` | 58% 同族色（浅 `deepseek-50` / 深 `bluish-850`） |
+| 2 | 消息输入框 | dsh-client-ui-conversation | `--dsw-specific-input-major` | 64% |
+| 3 | 「已编辑 N 个文件」块 | dsh-client-ui-deliverables | `--dsw-alias-bg-layer-1` + `--changes-fill` | 卡片/填充 52%，hover 70% |
+| 4 | cost-meter 侧栏卡片（今日/余额/平价） | dsh-cost-meter | `.cm-footer-stack` + 内层 `.cm-bbox` 也是实心 | 外层 44%，内层 `transparent` |
+| 5 | 费用角标 / 费用明细按钮 | dsh-cost-meter | `--dsw-alias-bg-layer-2` / `--dsw-alias-button-elevated-fill` | 42% / 46% |
+
+原则和 §1.3 一致：**只改材质，不碰布局**；颜色一律 `color-mix(in srgb, <原 token> N%, transparent)`，
+不写死 RGB，换主题/换 tint 都跟着走。全部规则挂在
+`html[data-platform="darwin"][data-next-material="transparent"]` 下，因此关总开关就整体退回实心。
+
+**为什么五处不用同一个百分比**：它们面积、层级、文字密度都不同。气泡面积小且文字少，58% 就够透；
+输入框要长期承载光标与多行文字，64% 保证对比度；文件块是信息卡片，52% 仍能看清文件名；
+侧栏卡片在最边缘、背后就是壁纸，44% 即可；两个小控件面积更小，42% / 46% 避免「糊成一团灰」。
+smoke test 会断言这组值**至少 5 个不同**，防止以后被「统一成一个变量」改回去。
+
+**为什么不用 `backdrop-filter`**：还是那条红线（§1 红线 1）。这里的透明是**一层半透明色叠在已有磨砂面上**，
+不做窗口采样，因此不会糊成灰雾；代价是背后的颜色是「面板色 × 壁纸」的合成结果，而不是实时模糊采样——
+在 macOS vibrancy 窗口里这正是想要的效果。
+
+**选择器为什么这么挑**：
+
+- 气泡没有稳定 `data-*`，但 `--dsw-specific-bubble` 只被气泡消费 → 在门控 `body` 上重定义该 token 最稳，
+  不依赖上游 CSS 的 hash 类名（hash 每次构建都会变）。
+- 输入框 / 文件块有稳定属性 `[data-composer-card]` / `[data-changed-files]`，直接锚属性；
+  文件块的 header 底色走的是它自己的 `--changes-fill` / `--changes-hover`，在卡片作用域里覆盖这两个变量即可。
+- cost-meter 的类名是字面量（`cm-*`，不是 hash），但它自己有一套 `followSkinTransparency` 开关，
+  只覆盖费用页/侧栏的一部分表面；本插件不依赖那个开关，直接覆盖卡片与控件。
+- `.cm-bbox` 有一条独立兜底（50%），并被 `.cm-footer-stack` 内层的 `transparent` 规则按特异性压过，
+  这样卡片无论出现在 footer 还是聊天 turn tail 都不会是实心。
+
+**失败模式**：上游改类名/属性 → 该条规则变成空操作，对应表面退回实心（不会更糟）；
+上游 token 不存在 → 规则带 fallback，仍是半透明；主题切换 → 深浅两支分别覆盖。
+
 
 ---
 
@@ -516,7 +556,7 @@ cp "$P/package.json" "$P/package.json.bak-$(date +%Y%m%d-%H%M%S)"
       与 `lib/preload-app.cjs` 实际写的属性逐字一致（在 app.asar 里 grep 到源头）
 - [x] 三个不透明面的锚点取自 ui-layout 的实际规则（`_centerCol` / `_bottomRow` / `_rightbarCol`
       都实测 `background: var(--dsw-alias-bg-base)`），且 `[data-platform=darwin]` 覆盖规则也一并核对
-- [x] `node smoke-test.mjs` → **117/117**；`bash verify.sh` → **29 ✓ / 0 ✗**（v1.5.0 为 **168/168** 与 **36 ✓ / 0 ✗**；v1.5.1 为 **204/204** 与 **42 ✓ / 0 ✗**，见下面两段）
+- [x] `node smoke-test.mjs` → **117/117**；`bash verify.sh` → **29 ✓ / 0 ✗**（v1.5.0 为 **168/168** 与 **36 ✓ / 0 ✗**；v1.5.1 为 **204/204** 与 **42 ✓ / 0 ✗**；v1.5.2 为 **221/221** 与 **62 ✓ / 0 ✗**，见下面几段）
 - [x] 已确认上游会自己透明的面（`_frame` / `_sidebarCol`）**不**被本插件重复染色
 - [x] 弹层快照改为直取静态调色板（`bluish-00` / `-950` / `-875`），无环、与 ui-theme 语义等价
 
@@ -565,13 +605,34 @@ cp "$P/package.json" "$P/package.json.bak-$(date +%Y%m%d-%H%M%S)"
 - [ ] 浅色壁纸下聊天里的行内代码块不再是一块实心灰（透出底色，文字仍可读）
 - [ ] 围栏代码块（大段代码）保持不透明、可读
 
+**半透明表面（v1.5.2，2026-11-06）**
+
+静态侧已知全绿（可复核）：
+
+- [x] `node smoke-test.mjs` → **221/221**；`bash verify.sh` → **62 ✓ / 0 ✗**（§8 期望版本 1.5.2）
+- [x] 10 条规则全部以门控根开头、只改 `background` / 自定义属性、无 `backdrop-filter` 声明、无布局属性
+- [x] 百分比集合含 42/44/46/50/52/58/64/70，且至少 5 个不同值（当前 8 个）
+- [x] 深浅两支分别覆盖：气泡（`deepseek-50` / `bluish-850`）、文件块（`neutral-50/100` / `neutral-850/800`）
+- [x] `.cm-footer-stack.summary … .cm-bbox` 的 `transparent` 规则排在独立 `.cm-bbox`（50%）之前，
+      内层按特异性生效；smoke test 有顺序 + 生效断言
+- [x] 临时 mock 样张（`/tmp/v152-preview.png`，非仓库文件）：五处都透出壁纸、文字可读、无灰雾
+
+需要 `Cmd+R` 之后用眼睛确认：
+
+- [ ] 用户消息气泡不再是实心块，浅色/深色主题各看一眼
+- [ ] 消息输入框半透明（默认 64%），光标与长文本仍清晰
+- [ ] 「已编辑 N 个文件」卡片与 header 透出壁纸，文件名列表可读
+- [ ] 侧栏底部的 cost-meter 卡片（今日/余额/平价进度条）半透明，数字对比度足够
+- [ ] 顶部/输入区的「费用 ¥0」「费用明细」两个小控件不糊成一团
+- [ ] 关总开关 → 以上五处全部回到实心（规则随门控一起失效）
+
 **还没被明确看过的（都不影响已达成效果）**
 
 - [ ] 关掉「启用磨砂玻璃」→ 面板像素级回到原生实心；再打开 → 恢复磨砂
 - [ ] 关「侧边栏面板磨砂」→ 侧边栏当场回到原生实心，会话面板**不受影响**
 - [ ] 关「深层玻璃」→ 侧边栏内部卡片/列表立即回到实心
 - [ ] `Cmd+B` 折叠侧栏正常；侧栏/右栏 resize handle 拖拽正常
-- [ ] 输入框、发送按钮、`@`/`/` 补全弹层、右键菜单**保持不透明**
+- [ ] 发送按钮、`@`/`/` 补全弹层、右键菜单**保持不透明**（输入框本体自 v1.5.2 起为半透明）
 - [ ] better-sidebar 的拖拽分栏、标签切换、底部工作台折叠等交互**全部正常**
 - [ ] 浅色主题看一遍（目前只在深色下确认过）
 - [ ] 左侧边栏观感不变
@@ -642,4 +703,4 @@ function evaluatePluginCompatibility(manifest, exemptions = {}, runtimeVersion =
 | dshmarket@1.66.8 | `^0.2.0-rc.1` | 满足 |
 | @michengai/dsh-archive-manager@1.0.11 | 显式含 `0.2.0-rc.2` | 满足 |
 | @michengai/dsh-btw@0.1.15 | 显式含 `0.2.0-rc.2` | 满足 |
-| **dsh-vibrancy-skin@1.5.1** | **无 `peerDependencies`** | **放行** |
+| **dsh-vibrancy-skin@1.5.2** | **无 `peerDependencies`** | **放行** |

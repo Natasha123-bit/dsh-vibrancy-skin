@@ -5,7 +5,8 @@
 stripped back out, **2026-10-02 23:57 (+0800)** as **v1.3.2** (dialog/overlay opacity fix),
 and **2026-10-28 03:5x** as **v1.4.0** (DSH NEXT 2.0.20-next / dsh 0.2.1-rc.3 port),
 **2026-11-06** as **v1.5.0** (background image frost: wallpaper / desktop modes), and the same day as **v1.5.1**
-(frost dial + translucent inline code)
+(frost dial + translucent inline code), then **v1.5.2** (translucent bubble / composer / file card / cost-meter
+surfaces)
 **Source of truth:** this directory. `~/.dsh/profiles/desktop/node_modules/dsh-vibrancy-skin`
 is a **symlink to this directory**, so an edit here is already the installed copy — there is no
 copy step and no second place to keep in sync.
@@ -38,6 +39,42 @@ re-pointed at the new path (old directory kept as a symlink to it). No plugin co
   25 是**加那 2 条断言之前**（v1.3.1 时期）的数，当时忘记 +2。
 - **路径校正**：旧目录实际在 `/Users/leixiaokang/Documents/DSH-Default/.dsh-vibrancy-skin-old-20261004-033509`。
 - 顺手发现、**未动**（留作待办）：`.backup/LAST_BACKUP_TS` 仍写 `20260928-054614`，未反映 2026-10-04 的迁前备份。
+
+## v1.5.2 delta (translucent surfaces: bubble / composer / file card / cost-meter)
+
+**需求（用户 2026-11-06，v1.5.1 验收通过后）：** cost-meter 的卡片、图一的文件编辑块、图三的用户消息气泡
+「也要让其不突兀」；随后补充「图一也是 dsh-cost-meter 的块，图二是消息输入框」，并明确
+「这五处不要全部用同一个不透明度数值，要根据实际美学效果来单独选定」。
+
+**改动（只动 `client.js`，1476 → 1540 行，+64/−0）：** sheet 1 末尾新增 10 条门控规则（行 203–265），
+全部 `color-mix(in srgb, <原 token> N%, transparent)`，只改 `background` / 自定义属性：
+
+| 表面 | 锚点 | 不透明度 |
+| --- | --- | --- |
+| 用户气泡（浅/深两支） | `--dsw-specific-bubble`（body / `body[data-ds-dark-theme]`） | 58%（`deepseek-50` / `bluish-850`） |
+| 消息输入框 | `[data-composer-card]` | 64%（`--dsw-specific-input-major`） |
+| 文件编辑块 | `[data-changed-files]` + `--changes-fill` / `--changes-hover` | 52% / 52% / 70%（深色 850 / 800） |
+| cost 侧栏卡片外层 | `.cm-footer-stack.summary:not(.rail)` | 44% |
+| cost 侧栏卡片内层 | 同前缀 `.cm-bbox` | `transparent`（压过独立兜底） |
+| cost 卡片独立兜底 | `.cm-bbox` | 50%（`bg-layer-1`） |
+| 费用角标 | `.cm-chip` | 42%（`bg-layer-2`） |
+| 费用明细按钮 | `.cm-btn.cm-stat-entry` | 46%（`button-elevated-fill`） |
+
+**为什么：**
+- `--dsw-specific-bubble` 只被气泡消费 → 在门控 `body` 上重定义 token，不依赖上游 hash 类名（每次构建会变）。
+- `[data-composer-card]` / `[data-changed-files]` / `.cm-*` 是稳定属性或字面量类名；cost-meter 自带的
+  `followSkinTransparency` 只覆盖费用页/侧栏一部分表面，所以不依赖它，直接覆盖卡片与控件。
+- 五个值刻意不同：面积/文字密度不同；smoke test 断言 distinct ≥ 5（当前 8 个）。
+- 仍然**不用 `backdrop-filter`**：这里是半透明色叠在已有磨砂面上，不做窗口采样，不会糊成灰雾。
+
+**验收（2026-11-06）：**
+* `node smoke-test.mjs` → **221 ✓ / 0 ✗**（+17：白名单三项、10 条规则、7 锚点、门控/无布局/无 backdrop-filter、
+  百分比集合、深色 token、透明规则顺序）；
+* `bash verify.sh` → **62 ✓ / 0 ✗**（+20：§8 期望 1.5.2、9 锚点、8 百分比、3 深色 token；注释里的
+  `backdrop-filter` 单词不误红，断言是声明级）；
+* 临时 mock 样张 `/tmp/v152-preview.png`（2560×1600，非仓库文件）：五处均透出壁纸、文字可读、无灰雾；
+* 窗口内观感待用户 `Cmd+R` 后目视；
+* `client.js` md5 **`50495a6766bc68cba68010e9003716a4`**，与活体软链一致。
 
 ## v1.5.1 delta (frost dial + translucent inline code)
 

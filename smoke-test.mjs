@@ -563,12 +563,15 @@ console.log("J. every stylesheet touches material properties only");
   const core = env.headChildren[0];
   const panel = env.headChildren[1];
   auditSheet("sheet 1 core", core.textContent, [
+    "--changes-fill",
+    "--changes-hover",
     "--dsh-vib-bg-base-solid",
     "--dsh-vib-bg-layer-1-solid",
     "--dsh-vib-pane",
     "--dsh-vib-tint-strength",
     "--dsw-alias-bg-base",
     "--dsw-alias-bg-layer-1",
+    "--dsw-specific-bubble",
     "background",
     "background-color",
   ]);
@@ -598,6 +601,100 @@ console.log("J. every stylesheet touches material properties only");
       /background-color:\s*color-mix\(in srgb,\s*var\(--dsw-alias-markdown-inline-code,\s*#808080\)\s*45%,\s*transparent\)/.test(
         codeRule.body,
       ),
+  );
+  /* v1.5.2: five upstream surfaces still paint their own opaque fill. Sheet 1
+     now re-points them through color-mix; these checks pin the anchors, the
+     material-only shape, and the fact that the fills stay distinct enough to
+     read as one translucent family rather than five copies of one value. */
+  const SURFACE_ANCHORS = [
+    "[data-composer-card]",
+    "[data-changed-files]",
+    ".cm-footer-stack.summary:not(.rail)",
+    ".cm-bbox",
+    ".cm-chip",
+    ".cm-btn.cm-stat-entry",
+  ];
+  const SURFACE_TOKENS = ["--dsw-specific-bubble", "--changes-fill", "--changes-hover"];
+  const surfaceRules = coreRules.filter(
+    (r) =>
+      r.selectors.some((s) => SURFACE_ANCHORS.some((anchor) => s.includes(anchor))) ||
+      SURFACE_TOKENS.some((token) => r.body.includes(token)),
+  );
+  const surfaceText = surfaceRules.map((r) => r.body).join("\n");
+  const surfaceHas = (needle) =>
+    surfaceRules.some((r) => r.selectors.some((s) => s.includes(needle)));
+  check(
+    "sheet 1 ships the ten translucent-surface rules",
+    surfaceRules.length === 10,
+    `${surfaceRules.length} rule(s)`,
+  );
+  const bubbleRules = surfaceRules.filter((r) => r.body.includes("--dsw-specific-bubble"));
+  check(
+    "surface: user bubble token is re-pointed in both themes",
+    bubbleRules.length === 2 &&
+      bubbleRules.some((r) => r.selectors.some((s) => s.includes("body[data-ds-dark-theme]"))),
+    `${bubbleRules.length} rule(s)`,
+  );
+  check("surface: composer card anchor", surfaceHas("[data-composer-card]"));
+  check("surface: changed-files card anchor", surfaceHas("[data-changed-files]"));
+  check(
+    "surface: changed-files header/hover token anchors",
+    surfaceText.includes("--changes-fill") && surfaceText.includes("--changes-hover"),
+  );
+  check(
+    "surface: cost summary card anchor",
+    surfaceHas(".cm-footer-stack.summary:not(.rail)"),
+  );
+  check("surface: cost meter box anchor", surfaceHas(".cm-bbox"));
+  check("surface: cost meter chip anchor", surfaceHas(".cm-chip"));
+  check("surface: cost detail button anchor", surfaceHas(".cm-btn.cm-stat-entry"));
+  check(
+    "surface: every new selector starts with the material gate",
+    surfaceRules.length > 0 &&
+      surfaceRules.every((r) => r.selectors.every((s) => s.startsWith(WINDOW_SCOPE))),
+    `${surfaceRules.length} rule(s)`,
+  );
+  check("surface: no backdrop-filter declaration", !/backdrop-filter\s*:/.test(surfaceText));
+  check(
+    "surface: no layout property",
+    !/\b(grid-template|width|height|display|position|border-radius|padding|margin|overflow)\s*:/.test(
+      surfaceText,
+    ),
+  );
+  const surfacePcts = [...surfaceText.matchAll(/(\d+)%/g)].map((m) => Number(m[1]));
+  const REQUIRED_PCTS = [42, 44, 46, 50, 52, 58, 64, 70];
+  check(
+    "surface: opacities cover 42/44/46/50/52/58/64/70",
+    REQUIRED_PCTS.every((pct) => surfacePcts.includes(pct)),
+    [...new Set(surfacePcts)].sort((a, b) => a - b).join(", "),
+  );
+  check(
+    "surface: at least five distinct opacity values",
+    new Set(surfacePcts).size >= 5,
+    `${new Set(surfacePcts).size} distinct`,
+  );
+  check(
+    "surface: dark branches reference the three static neutral tokens",
+    [
+      "--dsw-static-neutral-bluish-850",
+      "--dsw-static-neutral-850",
+      "--dsw-static-neutral-800",
+    ].every((token) => surfaceText.includes(token)),
+  );
+  const innerBbox = coreRules.findIndex((r) =>
+    r.selectors.some((s) => s.includes(".cm-footer-stack.summary") && s.includes(".cm-bbox")),
+  );
+  const standaloneBbox = coreRules.findIndex((r) =>
+    r.selectors.some((s) => s.endsWith(" .cm-bbox") && !s.includes(".cm-footer-stack")),
+  );
+  check(
+    "surface: cost summary's inner .cm-bbox is transparent",
+    innerBbox !== -1 && /background:\s*transparent/.test(coreRules[innerBbox].body),
+  );
+  check(
+    "surface: transparent inner .cm-bbox rule precedes the 50% standalone fallback",
+    innerBbox !== -1 && standaloneBbox !== -1 && innerBbox < standaloneBbox,
+    `inner ${innerBbox}, standalone ${standaloneBbox}`,
   );
   auditSheet("sheet 2 sidebar", panel.textContent, ["--dsw-alias-bg-base", "background"]);
   check(

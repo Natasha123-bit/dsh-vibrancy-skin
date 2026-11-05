@@ -173,6 +173,34 @@ grep -qF 'color-mix(in srgb, var(--dsw-alias-markdown-inline-code, #808080) 45%,
 grep -qE ':not\(pre\)[[:space:]]*>[[:space:]]*code' "$PKG/client.js" \
   && ok "fenced code blocks are deliberately left opaque" \
   || bad ":not(pre) > code guard missing"
+# --- v1.5.2: five opaque surfaces become translucent ---------------------
+for anchor in \
+  '--dsw-specific-bubble' \
+  '[data-composer-card]' \
+  '[data-changed-files]' \
+  '--changes-fill' \
+  '--changes-hover' \
+  '.cm-footer-stack.summary:not(.rail)' \
+  '.cm-bbox' \
+  '.cm-chip' \
+  '.cm-btn.cm-stat-entry'; do
+  grep -qF -- "$anchor" "$PKG/client.js" \
+    && ok "v1.5.2 surface anchor present: $anchor" \
+    || bad "v1.5.2 surface anchor missing: $anchor"
+done
+for opacity in 42 44 46 50 52 58 64 70; do
+  grep -qF -- " ${opacity}%, transparent" "$PKG/client.js" \
+    && ok "v1.5.2 surface opacity present: ${opacity}%" \
+    || bad "v1.5.2 surface opacity missing: ${opacity}%"
+done
+for token in \
+  '--dsw-static-neutral-bluish-850' \
+  '--dsw-static-neutral-850' \
+  '--dsw-static-neutral-800'; do
+  grep -qF -- "$token" "$PKG/client.js" \
+    && ok "v1.5.2 dark surface token present: $token" \
+    || bad "v1.5.2 dark surface token missing: $token"
+done
 grep -qE 'pointer-events:[[:space:]]*none' "$PKG/client.js" \
   && ok "background layer is pointer-events: none" \
   || bad "background layer missing pointer-events: none"
@@ -184,6 +212,6 @@ grep -q 'indexedDB' "$PKG/client.js" \
   || bad "IndexedDB storage path missing"
 node -e '
 const v = require("'"$PKG"'/package.json").version;
-console.log((v === "1.5.1" ? "\u2713" : "\u2717") + " installed version = " + v + (v === "1.5.1" ? "" : " (expected 1.5.1)"));
+console.log((v === "1.5.2" ? "\u2713" : "\u2717") + " installed version = " + v + (v === "1.5.2" ? "" : " (expected 1.5.2)"));
 ' 2>&1 | sed 's/^/  /'
 
