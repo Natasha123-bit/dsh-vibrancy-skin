@@ -1,28 +1,41 @@
 /**
- * Visual sample for the v1.5.0 background-image layer.
+ * Visual sample for the background-image layer, at three frost levels.
  *
  * The plugin itself cannot be rendered without DSH Desktop running, but the
  * only thing that matters visually is sheet 4: a fixed, blurred picture layer
  * behind the (native) frosted panes. This script reproduces exactly that:
  *
  *   1. pulls the BG_CSS_CONTENT template literal out of client.js verbatim
- *      (no second copy to drift), so the selector / blur / z-index under test
- *      is the shipped one;
+ *      (no second copy to drift), so the selector / z-index / blur formula
+ *      under test is the shipped one;
  *   2. builds a colourful mock wallpaper (inline SVG data URI) and exposes it
  *      to the sheet through --dsh-vib-bg-image on <html>, like the plugin's
  *      inline property on <body>;
- *   3. lays out three semi-transparent panes (the app's sidebar / conversation
+ *   3. renders frost 0 / 36 / 100 by replacing the
+ *      `blur(var(--dsh-vib-frost, 36px))` fallback expression with a concrete
+ *      px value — v1.5.1 made the radius adjustable, so one sample is no
+ *      longer enough to judge "too sharp" vs "grey fog";
+ *   4. lays out three semi-transparent panes (the app's sidebar / conversation
  *      / right column shape) and screenshots 1280×800 with the bundled
- *      Playwright Chromium, headless, to /tmp/dsh-bg-preview.png.
+ *      Playwright Chromium, headless, to /tmp/dsh-bg-preview-{0,36,100}.png
+ *      plus the legacy /tmp/dsh-bg-preview.png copy of the 36px sample.
  *
  * Usage: node visual-bg.mjs
- * Output: /tmp/dsh-bg-preview.png (path + size + dimensions printed)
+ * Output: four PNGs under /tmp (paths + sizes + dimensions printed)
  *
  * No npm package is used — only node: builtins and a local Chromium binary.
  * The HTML lives in /tmp and is never committed.
  */
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -37,6 +50,21 @@ if (match === null) {
   process.exit(1);
 }
 const BG_CSS = match[1];
+
+/* v1.5.1 moved the radius behind a custom property. Refuse to silently render
+   a stale hard-coded 36px if the formula changes again. */
+const FROST_RE = /var\(--dsh-vib-frost,\s*36px\)/;
+if (!FROST_RE.test(BG_CSS)) {
+  console.error("✗ sheet 4 no longer contains blur(var(--dsh-vib-frost, 36px))");
+  console.error("  update visual-bg.mjs to match the shipped blur formula");
+  process.exit(1);
+}
+
+const FROSTS = [
+  { value: 0, label: "0px · 未模糊，保留原图细节" },
+  { value: 36, label: "36px · 默认" },
+  { value: 100, label: "100px · 接近纯雾面" },
+];
 
 /* --- 2. mock wallpaper --------------------------------------------------- */
 /* A dark violet base with three large, soft colour pools (amber, magenta,
@@ -82,15 +110,16 @@ const wallpaperUri = `data:image/svg+xml,${encodeURIComponent(wallpaper).replace
 const PANE = "rgba(18,18,24,0.45)";
 const BORDER = "rgba(255,255,255,0.12)";
 
-const html = `<!doctype html>
+const buildHtml = (frost, frostLabel) => `<!doctype html>
 <html lang="zh-CN" data-platform="darwin" data-next-material="transparent"
       style="--dsh-vib-bg-image: url('${wallpaperUri}')">
 <head>
   <meta charset="utf-8">
-  <title>dsh-vibrancy-skin v1.5.0 — background image sample</title>
+  <title>dsh-vibrancy-skin v1.5.1 — background image sample (frost ${frost}px)</title>
   <style>
-    /* ---- sheet 4, copied verbatim from client.js ---- */
-${BG_CSS}
+    /* ---- sheet 4, copied verbatim from client.js; only the var() fallback
+           expression is substituted with the concrete px value ---- */
+${BG_CSS.replace(FROST_RE, `${frost}px`)}
 
     /* ---- sample-page chrome only (not part of the plugin) ---- */
     * { box-sizing: border-box; }
@@ -177,17 +206,17 @@ ${BG_CSS}
     <section class="pane">
       <span class="eyebrow">Conversation</span>
       <h1>背景图 · 磨砂面板</h1>
-      <p>图片以 fixed / inset -64px 铺在窗口后面，自身 blur(36px)；面板是半透明层，所以颜色会透上来，而不是一层灰雾。</p>
+      <p>图片以 fixed / inset -64px 铺在窗口后面，自身 blur(${frost}px)；面板是半透明层，所以颜色会透上来，而不是一层灰雾。</p>
       <div class="card">
-        中心区域应当能看出壁纸的橙 / 品红 / 青三种色团经过 36px 模糊后的柔光，
-        以及面板边缘没有 1px 硬切黑边。
+        中心区域应当能看出壁纸的橙 / 品红 / 青三种色团经过 ${frost}px 模糊后的柔光，
+        以及面板边缘没有 1px 硬切黑边。当前档位：${frostLabel}。
       </div>
       <div class="card">
         本样张只复刻第 4 张表（body::before 装饰层），不含原生 vibrancy；
         面板的 rgba(18,18,24,0.45) 就是真实窗口里玻璃那一层。
       </div>
       <div class="spacer"></div>
-      <span class="eyebrow">1280 × 800 · 1× DPR</span>
+      <span class="eyebrow">1280 × 800 · 1× DPR · frost ${frost}px</span>
     </section>
 
     <section class="pane">
@@ -201,14 +230,9 @@ ${BG_CSS}
       <span class="eyebrow">320 px · rgba 0.45</span>
     </section>
   </main>
-  <div class="caption">dsh-vibrancy-skin v1.5.0 · 背景图视觉样张 · 仅用于观察颜色透出与边缘过渡</div>
+  <div class="caption">dsh-vibrancy-skin v1.5.1 · 背景图视觉样张 · frost ${frost}px · 仅用于观察颜色透出与边缘过渡</div>
 </body>
 </html>`;
-
-const HTML_PATH = "/tmp/dsh-bg-preview.html";
-const PNG_PATH = "/tmp/dsh-bg-preview.png";
-const PROFILE_DIR = "/tmp/dsh-bg-preview-profile";
-writeFileSync(HTML_PATH, html, "utf8");
 
 /* --- 4. locate Chromium -------------------------------------------------- */
 const candidates = [
@@ -232,12 +256,12 @@ if (browser === undefined) {
   process.exit(1);
 }
 
-/* --- 5. screenshot ------------------------------------------------------- */
-rmSync(PNG_PATH, { force: true });
+/* --- 5. screenshot each frost level -------------------------------------- */
+const PROFILE_DIR = "/tmp/dsh-bg-preview-profile";
 rmSync(PROFILE_DIR, { recursive: true, force: true });
 mkdirSync(PROFILE_DIR, { recursive: true });
 
-const args = [
+const baseArgs = [
   "--headless=new",
   "--disable-gpu",
   "--hide-scrollbars",
@@ -246,41 +270,57 @@ const args = [
   "--no-default-browser-check",
   `--user-data-dir=${PROFILE_DIR}`,
   "--window-size=1280,800",
-  `--screenshot=${PNG_PATH}`,
-  `file://${HTML_PATH}`,
 ];
 
 console.log(`[visual-bg] browser: ${browser}`);
-console.log(`[visual-bg] html:    ${HTML_PATH}`);
-console.log(`[visual-bg] png:     ${PNG_PATH}`);
 
-const result = spawnSync(browser, args, {
-  stdio: ["ignore", "ignore", "pipe"],
-  timeout: 120_000,
-  encoding: "utf8",
-});
+const samples = [];
+for (const { value, label } of FROSTS) {
+  const htmlPath = `/tmp/dsh-bg-preview-${value}.html`;
+  const pngPath = `/tmp/dsh-bg-preview-${value}.png`;
+  writeFileSync(htmlPath, buildHtml(value, label), "utf8");
+  rmSync(pngPath, { force: true });
 
-const stderr = (result.stderr || "").trim();
-if (result.error) {
-  console.error(`✗ could not start Chromium: ${result.error.message}`);
-  process.exit(1);
+  const result = spawnSync(browser, [...baseArgs, `--screenshot=${pngPath}`, `file://${htmlPath}`], {
+    stdio: ["ignore", "ignore", "pipe"],
+    timeout: 120_000,
+    encoding: "utf8",
+  });
+  const stderr = (result.stderr || "").trim();
+
+  if (result.error) {
+    console.error(`✗ could not start Chromium for frost ${value}: ${result.error.message}`);
+    process.exit(1);
+  }
+  if (result.status !== 0) {
+    console.error(`✗ Chromium exited with ${result.status} for frost ${value}`);
+    if (stderr !== "") console.error(stderr.split("\n").slice(-15).join("\n"));
+    process.exit(1);
+  }
+  if (!existsSync(pngPath)) {
+    console.error(`✗ Chromium exited 0 but wrote no screenshot for frost ${value}`);
+    if (stderr !== "") console.error(stderr.split("\n").slice(-15).join("\n"));
+    process.exit(1);
+  }
+
+  /* PNG IHDR: width = bytes 16..20, height = 20..24 (big-endian). */
+  const bytes = readFileSync(pngPath);
+  const width = bytes.readUInt32BE(16);
+  const height = bytes.readUInt32BE(20);
+  if (width !== 1280 || height !== 800) {
+    console.error(`✗ frost ${value}: expected 1280×800, got ${width}×${height}`);
+    process.exit(1);
+  }
+  samples.push({ value, pngPath, width, height, kb: (statSync(pngPath).size / 1024).toFixed(1) });
 }
-if (result.status !== 0) {
-  console.error(`✗ Chromium exited with ${result.status}`);
-  if (stderr !== "") console.error(stderr.split("\n").slice(-15).join("\n"));
-  process.exit(1);
-}
-if (!existsSync(PNG_PATH)) {
-  console.error("✗ Chromium exited 0 but wrote no screenshot");
-  if (stderr !== "") console.error(stderr.split("\n").slice(-15).join("\n"));
-  process.exit(1);
-}
 
-/* PNG IHDR: width = bytes 16..20, height = 20..24 (big-endian). */
-const bytes = readFileSync(PNG_PATH);
-const width = bytes.readUInt32BE(16);
-const height = bytes.readUInt32BE(20);
-const kb = (statSync(PNG_PATH).size / 1024).toFixed(1);
+/* Legacy path kept for docs/scripts that still look at the single sample;
+   it is the 36px default, the level users see before touching the slider. */
+const legacy = "/tmp/dsh-bg-preview.png";
+copyFileSync("/tmp/dsh-bg-preview-36.png", legacy);
 
-console.log(`[visual-bg] ok: ${width}×${height}, ${kb} KB`);
-console.log(PNG_PATH);
+console.log("[visual-bg] samples written:");
+for (const sample of samples) {
+  console.log(`  ${sample.pngPath}  ${sample.width}×${sample.height}  ${sample.kb} KB`);
+}
+console.log(`  ${legacy}  (copy of the 36px default)  ${(statSync(legacy).size / 1024).toFixed(1)} KB`);

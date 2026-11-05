@@ -188,6 +188,17 @@ html[data-platform="darwin"][data-next-material="transparent"] :is(dialog, [role
                               DO consume --dsw-alias-bg-base while sitting in
                               a retinted subtree are covered by rule 4 above.
 */
+
+/* --- 5. Inline code keeps a faint chip ----------------------------------
+   Upstream paints inline code with --dsw-alias-markdown-inline-code, which is
+   opaque enough to read as a solid block on the frost. Blending it 45% into
+   transparent keeps the chip recognisable without re-opaqueing the pane.
+   Fenced blocks (<pre> > code) are deliberately NOT touched: they are large
+   surfaces, and a translucent one would hurt long code reads. Material only —
+   no layout property is declared here. */
+html[data-platform="darwin"][data-next-material="transparent"] [class*="_markdown_"] :not(pre) > code {
+  background-color: color-mix(in srgb, var(--dsw-alias-markdown-inline-code, #808080) 45%, transparent);
+}
 `;
 
     /* ======================================================================
@@ -324,7 +335,7 @@ html[data-platform="darwin"][data-next-material="transparent"] body::before {
   background-position: center;
   background-repeat: no-repeat;
   background-size: cover;
-  filter: blur(36px);
+  filter: blur(var(--dsh-vib-frost, 36px));
 }
 `;
 
@@ -362,6 +373,11 @@ html[data-platform="darwin"][data-next-material="transparent"] body::before {
       deepHint: "连侧边栏内部的卡片、列表、编辑器等嵌套表面也一起玻璃化。透出的桌面内容更多，文字对比度会下降；觉得累眼就关掉。",
       strengthTitle: "强度",
       strengthIntro: "强度越低越透（玻璃感越强），越高越接近原来的不透明面板。",
+      frostTitle: "磨砂度",
+      frostIntro: "调整壁纸自身被模糊的程度：0 完全不模糊、100 接近纯雾面，默认 36。只在「透到壁纸」模式下可调。",
+      frostLabel: "模糊半径",
+      frostHint: "拖动滑杆即时调节壁纸的模糊半径；数值越大越雾，0 则保留原图细节。",
+      frostDesktopHint: "桌面模式下模糊由 macOS 固定，不可调；切到「透到壁纸」后即可拖动滑杆。",
       presetFrostTitle: "磨砂",
       presetFrostBody: "最通透，桌面内容隐约可见。",
       presetBalancedTitle: "均衡",
@@ -408,6 +424,11 @@ html[data-platform="darwin"][data-next-material="transparent"] body::before {
       deepHint: "Also turn the nested surfaces inside the sidebar into glass (cards, lists, inline editors). More of the desktop shows through and text contrast drops; switch it off if it tires your eyes.",
       strengthTitle: "Strength",
       strengthIntro: "Lower is more transparent (more glass), higher is closer to the original opaque pane.",
+      frostTitle: "Blur amount",
+      frostIntro: "How much the wallpaper itself is blurred: 0 keeps it sharp, 100 is close to solid fog, and 36 is the default. Only adjustable in “Wallpaper” mode.",
+      frostLabel: "Blur radius",
+      frostHint: "Drag the slider to blur the wallpaper live; higher is foggier, 0 keeps the original detail.",
+      frostDesktopHint: "Desktop mode uses the macOS-fixed blur. Switch to “Wallpaper” to adjust it.",
       presetFrostTitle: "Frosted",
       presetFrostBody: "Most transparent; the desktop stays faintly visible.",
       presetBalancedTitle: "Balanced",
@@ -433,6 +454,10 @@ html[data-platform="darwin"][data-next-material="transparent"] body::before {
     const PANELS_KEY = "dsh-vibrancy-skin:panels";
     const DEEP_KEY = "dsh-vibrancy-skin:deep";
     const DEFAULT_TINT = "40%";
+
+    /* --- wallpaper blur radius (v1.5.1) ---------------------------------- */
+    const FROST_KEY = "dsh-vibrancy-skin:frost";
+    const DEFAULT_FROST = 36;
 
     /* --- background image (v1.5.0) --------------------------------------- */
     const BG_STYLE_ID = "dsh-vibrancy-skin-bg-styles";
@@ -487,6 +512,18 @@ html[data-platform="darwin"][data-next-material="transparent"] body::before {
       return `${Math.round(clamped * 10) / 10}%`;
     }
 
+    /* Integer px radius in 0–100. Empty means "reset to the default";
+       anything unparseable returns null so callers can ignore it. Out-of-range
+       values are clamped, fractions rounded. */
+    function normalizeFrost(value) {
+      if (value === null || value === undefined || value === "") return DEFAULT_FROST;
+      const match = /^(-?[0-9]+(?:\.[0-9]+)?)\s*(?:px)?$/i.exec(String(value).trim());
+      if (match === null) return null;
+      const n = Number(match[1]);
+      if (!Number.isFinite(n)) return null;
+      return Math.round(Math.min(100, Math.max(0, n)));
+    }
+
     const state = {
       enabled: readStore(ENABLED_KEY) !== "0",
       /* Sidebar frost is opt-out: it is part of the look, so a fresh profile
@@ -495,6 +532,7 @@ html[data-platform="darwin"][data-next-material="transparent"] body::before {
       panels: readStore(PANELS_KEY) !== "0",
       deep: readStore(DEEP_KEY) === "1",
       tint: normalizeTint(readStore(TINT_KEY)) ?? DEFAULT_TINT,
+      frost: normalizeFrost(readStore(FROST_KEY)) ?? DEFAULT_FROST,
       bgMode: readStore(BG_KEY) === "wallpaper" ? "wallpaper" : "desktop",
       bgName: readStore(BG_NAME_KEY) || "",
       bgUrl: null,
@@ -510,6 +548,7 @@ html[data-platform="darwin"][data-next-material="transparent"] body::before {
           panels: state.panels,
           deep: state.deep,
           tint: state.tint,
+          frost: state.frost,
           bgMode: state.bgMode,
           bgName: state.bgName,
           bgUrl: state.bgUrl,
@@ -615,6 +654,20 @@ html[data-platform="darwin"][data-next-material="transparent"] body::before {
       });
     }
 
+    /* The wallpaper blur radius travels as an inline custom property too; it
+       is read by sheet 4 only (`filter: blur(var(--dsh-vib-frost, 36px))`).
+       Removing it while the skin is off keeps the body attribute clean. */
+    function applyFrostInline() {
+      whenBodyReady(() => {
+        if (!document.body) return;
+        if (state.enabled) {
+          document.body.style.setProperty("--dsh-vib-frost", `${state.frost}px`);
+        } else {
+          document.body.style.removeProperty("--dsh-vib-frost");
+        }
+      });
+    }
+
     function setTint(value) {
       const next = normalizeTint(value);
       if (next === null) return state.tint;
@@ -626,12 +679,24 @@ html[data-platform="darwin"][data-next-material="transparent"] body::before {
       return next;
     }
 
+    function setFrost(value) {
+      const next = normalizeFrost(value);
+      if (next === null) return state.frost;
+      state.frost = next;
+      writeStore(FROST_KEY, next === DEFAULT_FROST ? null : String(next));
+      applyFrostInline();
+      emit();
+      console.info(`[dsh-vibrancy-skin] frost = ${next}px`);
+      return next;
+    }
+
     function setEnabled(value) {
       state.enabled = value !== false;
       writeStore(ENABLED_KEY, state.enabled ? "1" : "0");
       syncStylesheets();
       applyTintInline();
       applyBgInline();
+      applyFrostInline();
       emit();
       console.info(`[dsh-vibrancy-skin] enabled = ${state.enabled}`);
       return state.enabled;
@@ -1232,6 +1297,49 @@ html[data-platform="darwin"][data-next-material="transparent"] body::before {
             }),
           ),
 
+          group("dsh-vibrancy-frost-title", t("frostTitle"), t("frostIntro"),
+            jsxs("div", {
+              children: [
+                jsxs("div", {
+                  className: "dshDesktopSettingsForm",
+                  children: [
+                    jsx("label", {
+                      className: "dshDesktopSettingsField",
+                      children: [
+                        jsx("span", { children: t("frostLabel") }),
+                        jsx("input", {
+                          className: "dshDesktopSettingsInput",
+                          type: "range",
+                          min: "0",
+                          max: "100",
+                          step: "1",
+                          value: String(skin.frost),
+                          disabled: !skin.enabled || skin.bgMode !== "wallpaper",
+                          onChange: (event) => setFrost(Number(event.target.value)),
+                        }),
+                        jsx("span", { children: `${skin.frost}px` }),
+                      ],
+                    }),
+                    jsx("button", {
+                      type: "button",
+                      className: "dshDesktopSettingsButton",
+                      disabled:
+                        !skin.enabled ||
+                        skin.bgMode !== "wallpaper" ||
+                        skin.frost === DEFAULT_FROST,
+                      onClick: () => setFrost(DEFAULT_FROST),
+                      children: t("reset"),
+                    }),
+                  ],
+                }),
+                jsx("p", {
+                  className: "dshDesktopSettingsHint",
+                  children: t(skin.bgMode === "wallpaper" ? "frostHint" : "frostDesktopHint"),
+                }),
+              ],
+            }),
+          ),
+
           group("dsh-vibrancy-fine-title", t("fineTitle"), t("fineIntro"),
             jsxs("div", {
               children: [
@@ -1283,6 +1391,7 @@ html[data-platform="darwin"][data-next-material="transparent"] body::before {
           presets: PRESETS.map((preset) => preset.tint),
           default: DEFAULT_TINT,
           setTint,
+          setFrost,
           setEnabled,
           setPanels,
           setDeep,
@@ -1298,6 +1407,7 @@ html[data-platform="darwin"][data-next-material="transparent"] body::before {
             setDeep(false);
             setEnabled(true);
             setBgMode("desktop");
+            setFrost(DEFAULT_FROST);
           },
         };
       } catch {}
@@ -1312,11 +1422,12 @@ html[data-platform="darwin"][data-next-material="transparent"] body::before {
       whenBodyReady(() => {
         applyTintInline();
         applyBgInline();
+        applyFrostInline();
         expose();
         const body = document.body;
         const root = document.documentElement;
         console.info(
-          `[dsh-vibrancy-skin] applied — enabled ${state.enabled}, sidebar panels ${state.panels}, deep glass ${state.deep}, tint ${state.tint}, theme ${body && body.dataset.dsDarkTheme !== undefined ? "dark" : "light"}, platform ${(root && root.dataset.platform) || "n/a"}, material ${(root && root.dataset.nextMaterial) || "n/a"}`,
+          `[dsh-vibrancy-skin] applied — enabled ${state.enabled}, sidebar panels ${state.panels}, deep glass ${state.deep}, tint ${state.tint}, frost ${state.frost}px, theme ${body && body.dataset.dsDarkTheme !== undefined ? "dark" : "light"}, platform ${(root && root.dataset.platform) || "n/a"}, material ${(root && root.dataset.nextMaterial) || "n/a"}`,
         );
       });
 
@@ -1355,6 +1466,7 @@ html[data-platform="darwin"][data-next-material="transparent"] body::before {
     syncStylesheets();
     applyTintInline();
     applyBgInline();
+    applyFrostInline();
     restoreBgImage();
 
     exports.inject = ["slots", "locale"];

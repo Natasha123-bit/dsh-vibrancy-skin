@@ -16,7 +16,8 @@
 | v1.3.1 | ✗ | 不可复原，**不打 tag** |
 | **v1.3.2** | ✓ | 打 tag `v1.3.2` |
 | **v1.4.0** | ✓ | DSH NEXT 适配；未打 tag |
-| **v1.5.0** | ✓ | 当前 HEAD（背景图磨砂） |
+| **v1.5.0** | ✓ | 背景图磨砂 |
+| **v1.5.1** | ✓ | 当前 HEAD（磨砂度 + 行内代码半透明）|
 
 **不按文档"重建" v1.3.0 / v1.3.1**：重建物与当时实际运行的代码不是同一个东西，写进历史会污染「能回滚」的语义。
 它们是本仓库建立之前就存在的缺口，不是迁移造成的；迁移唯一新增的好处是 **v1.2.0 之后的每一版都会真正留痕**。
@@ -41,6 +42,23 @@
   `node visual-bg.mjs` 出样张 `/tmp/dsh-bg-preview.png`（无灰雾、无硬边）。
   窗口内观感待用户 `Cmd+R` 目视确认。版本号三处同步（`package.json` / `verify.sh` §8 / 文档）。
 - **未改**：无 `backdrop-filter`、无 `peerDependencies`、不碰第三方插件、无网络请求。
+
+## 2026-11-06 — v1.5.1：磨砂度滑杆 + 行内代码半透明
+
+- **触发**：用户 v1.5.0 验收通过后提两条：「新增一个磨砂程度的调节…最高变成纯雾面，最低变成纯透明」；
+  「字符块能否也做成透明磨砂的…在使用浅色壁纸的时候不那么突兀」。
+- **磨砂度**：第 4 张表 `filter:blur(36px)` → `blur(var(--dsh-vib-frost, 36px))`；新增 `frost`
+  状态（localStorage `:frost`，默认 36，0–100 整数，clamp/round、非法忽略、默认值不落盘），
+  `applyFrostInline()` 写 `--dsh-vib-frost`，`setFrost()` / `getState().frost` / `resetAll` 复位。
+  设置页第 6 组（强度与微调之间）：0–100 滑杆 + `${n}px` + 恢复默认；「透到桌面」模式 disabled
+  并说明（模糊由 macOS 材质固定，CSS 改不了，不拿雾面罩假装）。
+- **行内代码**：上游 `--dsw-alias-markdown-inline-code` 是实色（浅 `neutral-50` / 深 `neutral-800`）；
+  在门控作用域内改为 `color-mix(in srgb, var(--dsw-alias-markdown-inline-code, #808080) 45%, transparent)`，
+  只改背景色，保留细边框；围栏代码块不动。
+- **验收**：`node smoke-test.mjs` **204 ✓ / 0 ✗**（+36）；`bash verify.sh` **42 ✓ / 0 ✗**（+6，§8 期望 1.5.1）；
+  `node visual-bg.mjs` 出 0/36/100 三张 1280×800 样张（无灰雾/硬边）。窗口观感待用户 `Cmd+R` 目视。
+  `client.js` 1364 → 1476 行，md5 `7ee155e1194ef5422b57cd6d8d96489d`。
+- **未改**：无 `backdrop-filter`、无 `peerDependencies`、无网络请求、不动布局属性。
 
 ## 2026-10-28 — v1.4.0：适配 DSH NEXT（2.0.20-next / `@deepseek-ai/dsh` 0.2.1-rc.3）
 

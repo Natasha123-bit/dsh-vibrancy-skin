@@ -58,7 +58,7 @@ AppFrame 的三列上。
    在透明 vibrancy 窗口上做窗口内模糊，只会糊上一层均匀灰雾（上一版 6 个面全
    用 backdrop-filter，用户原话：「我现在连整个窗口都被蒙上了一层灰，我什么也
    看不见了」）。模糊交给系统，CSS 只负责"把挡住它的东西挪开"。
-   v1.5.0 的「背景图」也只对**图片自身**做 `filter: blur(36px)`，不是窗口内采样（§1.3）。
+   v1.5.0 的「背景图」也只对**图片自身**做 `filter: blur(var(--dsh-vib-frost, 36px))`（v1.5.1 起可调），不是窗口内采样（§1.3）。
 2. **只改材质，不改布局。** 前三张表只允许 `background*` 与自定义属性；第 4 张只允许
    一个 `body::before` 装饰层（`pointer-events:none`，不占布局）。
 3. **tint 必须无环。** tint 用**静态调色板**（`--dsw-static-neutral-bluish-00/950`）
@@ -224,7 +224,7 @@ html[…] :is(dialog, [role="dialog"], [role="alertdialog"]) {
 ---
 
 
-## 1.3 背景图（v1.5.0）：为什么是页面内一层，而不是让系统再透一点
+## 1.3 背景图与磨砂度（v1.5.0 / v1.5.1）：为什么是页面内一层，而不是让系统再透一点
 
 需求：可以上传一张图片，让磨砂面板透出这张图（「透到壁纸」）；也可以选择「透到桌面」，
 保持原来的原生材质。**v1.5.0 的语义（A 方案）**：
@@ -265,7 +265,7 @@ html[data-platform="darwin"][data-next-material="transparent"] body::before {
   background-position: center;
   background-repeat: no-repeat;
   background-size: cover;
-  filter: blur(36px);        /* 只模糊图片自己，不采样窗口外 */
+  filter: blur(var(--dsh-vib-frost, 36px)); /* 半径由设置页「磨砂度」控制 */
 }
 ```
 
@@ -275,6 +275,15 @@ html[data-platform="darwin"][data-next-material="transparent"] body::before {
   与 tint 同理：优先级最高，且随表一起消失。
 - **为什么不用 `backdrop-filter`**：红线 1。那种写法要采样窗口后面的东西，在透明 vibrancy
   窗口上就是整片灰雾；这里的 blur 只作用在图片自己的像素上。
+
+### 磨砂度（v1.5.1）：0 = 最清晰、100 = 纯雾面
+
+- 半径不是写死的：`--dsh-vib-frost` 由 `applyFrostInline()` 写到 `body`，默认 `36px`，
+  设置页滑杆 0–100 直接映射成 0–100 px（`36` 就是 v1.5.0 已验收的观感，升级不突变）。
+- `0` = 图片完全不模糊（能看清壁纸细节，面板本身仍按 tint 磨砂）；`100` = 细节被抹平，只剩色块。
+- **「透到桌面」模式下滑杆置灰**：那层模糊由 macOS 的 `NSVisualEffectView` 材质决定，CSS 改不了；
+  不拿半透明雾面罩去假装（会更灰、文字对比度下降，属于视觉欺骗）。
+- 关闭总开关时 `applyFrostInline()` 会 `removeProperty`，不留内联变量。
 
 ### 图片怎么进来、存在哪
 
@@ -303,6 +312,24 @@ html[data-platform="darwin"][data-next-material="transparent"] body::before {
 
 性能：整窗只有**一个** fixed 装饰层；模糊的是 2048 px 的 WebP（一般 < 1 MB），
 不是每帧采样。CPU/GPU 开销远低于 backdrop-filter 方案。
+
+### 行内代码块（v1.5.1）：把实心色改成半透明
+
+聊天里的行内代码（`` `foo` ``）原本是一块实心底色：上游规则是
+`._markdown_… :not(pre) > code { background-color: var(--dsw-alias-markdown-inline-code) }`，
+而这个 token 是**实色**（浅色 `neutral-50` / 深色 `neutral-800`），所以在浅色壁纸上像贴了一块胶带。
+
+v1.5.1 在门控作用域内把它改成 45% 不透明（颜色仍跟主题走）：
+
+```css
+html[data-platform="darwin"][data-next-material="transparent"] [class*="_markdown_"] :not(pre) > code {
+  background-color: color-mix(in srgb, var(--dsw-alias-markdown-inline-code, #808080) 45%, transparent);
+}
+```
+
+- 不写死颜色：换主题时 `--dsw-alias-markdown-inline-code` 变，`color-mix` 跟着变。
+- 保留上游的细边框，块仍有边界；`padding` / `border-radius` 一律不碰（只改材质）。
+- **围栏代码块（```）不动**：大块代码需要稳定底色保证可读性。
 
 
 ---
@@ -358,7 +385,7 @@ cp "$SRC"/package.json "$SRC"/index.js "$SRC"/client.js "$SRC"/cordis.patch.yml 
 
 这一页不是自己画的 UI，而是直接复用了 DSH Desktop 官方设置页的样式类
 （`dshDesktopSettings*`，由 `dsh-plugin-desktop` 无条件安装），所以它在浅色/深色
-主题下与「桌面」页外观完全一致。**五组控件、三个开关**（另加背景图的模式卡片与图片按钮）：
+主题下与「桌面」页外观完全一致。**六组控件、三个开关**（另加背景图的模式卡片与图片按钮）：
 
 | 分组 | 控件 | 作用 |
 | --- | --- | --- |
@@ -367,10 +394,11 @@ cp "$SRC"/package.json "$SRC"/index.js "$SRC"/client.js "$SRC"/cordis.patch.yml 
 | 侧边栏（better-sidebar） | 「侧边栏面板磨砂」开关（默认**开**） | 面板本体、标签栏、底部工作台、改动视图、任务图、浮动窗变成同款磨砂 |
 | 侧边栏（better-sidebar） | 「深层玻璃（卡片 / 列表）」开关（默认**关**） | 连内部卡片、列表、内联编辑器也一起玻璃化；对比度会下降 |
 | 强度 | 磨砂 / 均衡 / 实心 三张卡片 | 24% / 40%（默认）/ 62%，**三级色板共用** |
+| 磨砂度（v1.5.1） | 0–100 滑杆 + 当前 px 值 + 「恢复默认」 | 只调壁纸层的模糊半径：0 = 最清晰、100 = 纯雾面、默认 36；「透到桌面」时置灰 |
 | 微调 | 0–100 数字输入 + 「恢复默认」 | 预设不够用时精确指定 |
 
 选择写进 `localStorage`（`dsh-vibrancy-skin:tint` / `:enabled` / `:panels` / `:deep` /
-`:bg-mode` / `:bg-name`），下次启动自动恢复。两个侧边栏开关在总开关关闭时显示为灰色
+`:bg-mode` / `:bg-name` / `:frost`），下次启动自动恢复。两个侧边栏开关在总开关关闭时显示为灰色
 （因为整张样式表都不在）。背景图本身不进 localStorage，走 IndexedDB（§1.3）。
 
 **为什么「关」是摘样式表而不是 tint 归 0 或 100**：tint 100% 只把
@@ -395,9 +423,10 @@ dshVibrancySkin.setPanels(false)  // 只关侧边栏"面板层"
 dshVibrancySkin.setDeep(true)     // 打开"深层玻璃"
 dshVibrancySkin.setBgMode("wallpaper") // 透到壁纸（需要有图；无图时等同于桌面观感）
 dshVibrancySkin.setBgMode("desktop")   // 透到桌面（默认）
+dshVibrancySkin.setFrost(36)           // 磨砂度：0 = 最清晰、100 = 纯雾面（只在壁纸模式可见）
 // setBgImage(blob, name) / clearBgImage() 也暴露了，正常走设置页的「选择图片」即可
-dshVibrancySkin.resetAll()        // 回到出厂：40% / 面板开 / 深层关 / 总开关开 / 透到桌面（保留已存图片）
-dshVibrancySkin.getState()        // { enabled, panels, deep, tint, bgMode, bgName, bgUrl, defaultTint, presets }
+dshVibrancySkin.resetAll()        // 回到出厂：40% / 面板开 / 深层关 / 总开关开 / 透到桌面 / 磨砂度 36（保留已存图片）
+dshVibrancySkin.getState()        // { enabled, panels, deep, tint, frost, bgMode, bgName, bgUrl, defaultTint, presets }
 dshVibrancySkin.subscribe(fn)     // 订阅（设置界面就是靠它同步的）
 ```
 
@@ -462,7 +491,7 @@ cp "$P/package.json" "$P/package.json.bak-$(date +%Y%m%d-%H%M%S)"
       2026-09-28 06:0x；报告留在 `/tmp/dsh-vibrancy-probe.ndjson.done`）
 - [x] **设置里多出「磨砂玻璃 / Vibrancy」一页**，位置紧挨内置「桌面」页之后
 - [x] 该页共 4 组控件、3 个开关（总开关 / 侧边栏面板 / 深层玻璃）——渲染树已在 smoke test 里逐项断言
-      （v1.5.0 增加「背景图」组后为 5 组 / 3 开关，见下面的 v1.5.0 段）
+      （v1.5.0 增加「背景图」组后为 5 组；v1.5.1 再增加「磨砂度」组，现为 6 组 / 3 开关）
 - [x] 在这页调强度当场生效（用户把强度调到 15%，探针读到的就是 15%）
 
 **侧边栏磨砂（v1.3.1 起，用户已确认）**
@@ -487,8 +516,7 @@ cp "$P/package.json" "$P/package.json.bak-$(date +%Y%m%d-%H%M%S)"
       与 `lib/preload-app.cjs` 实际写的属性逐字一致（在 app.asar 里 grep 到源头）
 - [x] 三个不透明面的锚点取自 ui-layout 的实际规则（`_centerCol` / `_bottomRow` / `_rightbarCol`
       都实测 `background: var(--dsw-alias-bg-base)`），且 `[data-platform=darwin]` 覆盖规则也一并核对
-- [x] `node smoke-test.mjs` → **117/117**；`bash verify.sh` → **29 ✓ / 0 ✗**（v1.5.0 起为 **168/168** 与
-      **36 ✓ / 0 ✗**，见下一段）
+- [x] `node smoke-test.mjs` → **117/117**；`bash verify.sh` → **29 ✓ / 0 ✗**（v1.5.0 为 **168/168** 与 **36 ✓ / 0 ✗**；v1.5.1 为 **204/204** 与 **42 ✓ / 0 ✗**，见下面两段）
 - [x] 已确认上游会自己透明的面（`_frame` / `_sidebarCol`）**不**被本插件重复染色
 - [x] 弹层快照改为直取静态调色板（`bluish-00` / `-950` / `-875`），无环、与 ui-theme 语义等价
 
@@ -518,6 +546,24 @@ cp "$P/package.json" "$P/package.json.bak-$(date +%Y%m%d-%H%M%S)"
 - [ ] 关总开关 → 壁纸层同时消失（不是只剩图片）
 - [ ] 重启 app → 壁纸模式与图片仍在（IndexedDB 恢复）
 - [ ] 移除图片 → 回到桌面模式，设置页显示"还没有选择图片"
+
+**磨砂度与行内代码（v1.5.1，2026-11-06）**
+
+静态侧已知全绿（可复核）：
+
+- [x] `node smoke-test.mjs` → **204/204**；`bash verify.sh` → **42 ✓ / 0 ✗**（§8 期望版本 1.5.1）
+- [x] 第 4 张表只用 `blur(var(--dsh-vib-frost, 36px))`，没有硬编码半径；`frost` 夹取/取整/持久化/
+      关总开关清内联变量，均由 smoke test 覆盖
+- [x] 行内代码规则在门控作用域内、只改 `background-color`、45% `color-mix`；围栏代码块不动
+- [x] `node visual-bg.mjs` → `/tmp/dsh-bg-preview-{0,36,100}.png`：0 档清晰、100 档趋于均匀，
+      三张均无整片灰雾、无硬边
+
+需要 `Cmd+R` 之后用眼睛确认：
+
+- [ ] 设置 → 磨砂玻璃 → 「磨砂度」：滑杆拖到 0 壁纸细节清晰、拖到 100 只剩色块，拖动时实时变化
+- [ ] 切到「透到桌面」：滑杆变灰并显示原因；切回「透到壁纸」后恢复可用且数值保留
+- [ ] 浅色壁纸下聊天里的行内代码块不再是一块实心灰（透出底色，文字仍可读）
+- [ ] 围栏代码块（大段代码）保持不透明、可读
 
 **还没被明确看过的（都不影响已达成效果）**
 
@@ -596,4 +642,4 @@ function evaluatePluginCompatibility(manifest, exemptions = {}, runtimeVersion =
 | dshmarket@1.66.8 | `^0.2.0-rc.1` | 满足 |
 | @michengai/dsh-archive-manager@1.0.11 | 显式含 `0.2.0-rc.2` | 满足 |
 | @michengai/dsh-btw@0.1.15 | 显式含 `0.2.0-rc.2` | 满足 |
-| **dsh-vibrancy-skin@1.5.0** | **无 `peerDependencies`** | **放行** |
+| **dsh-vibrancy-skin@1.5.1** | **无 `peerDependencies`** | **放行** |

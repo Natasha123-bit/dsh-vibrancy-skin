@@ -423,7 +423,7 @@ console.log("H. the section renders a native-shaped, localized tree");
 
   check("root uses the native settings shell class", classNameOf(tree) === "dshDesktopSettings");
   check("has a page header", !!byClass(tree, "dshDesktopSettingsHeader"));
-  check("5 groups (appearance / background / sidebar / strength / fine-tuning)", nodes.filter((n) => classNameOf(n) === "dshDesktopSettingsGroup").length === 5);
+  check("6 groups (appearance / background / sidebar / strength / frost / fine-tuning)", nodes.filter((n) => classNameOf(n) === "dshDesktopSettingsGroup").length === 6);
   check("native switch row", !!byClass(tree, "dshDesktopSettingsToggleRow"));
   const toggles = nodes.filter(
     (n) => classNameOf(n) === "dshDesktopSettingsToggle" && n.type === "button",
@@ -471,18 +471,36 @@ console.log("H. the section renders a native-shaped, localized tree");
     `${radios.length} radio(s)`,
   );
   check("preset titles/bodies resolved through t()", choices[0].props.title === dict.presetFrostTitle && choices[0].props.body === dict.presetFrostBody);
-  const input = byClass(tree, "dshDesktopSettingsInput");
+  /* v1.5.1 added the frost slider (also .dshDesktopSettingsInput), so select
+     the fine-tuning number input by its type instead of "first input wins". */
+  const inputs = nodes.filter((n) => classNameOf(n) === "dshDesktopSettingsInput");
+  const input = inputs.find((n) => n.props?.type === "number");
+  const frostRange = inputs.find((n) => n.props?.type === "range");
   check("number input present with 0–100 bounds", input?.props?.type === "number" && input.props.min === "0" && input.props.max === "100");
   check("number input shows the current value", input?.props?.value === "40");
-  /* The reset button is not the first .dshDesktopSettingsButton any more:
-     the background group's pick/replace button comes first. Locate it by its
-     localized label instead of weakening the disabled semantics. */
-  const buttons = nodes.filter((n) => classNameOf(n) === "dshDesktopSettingsButton");
-  const button = buttons.find((n) => n.props.children === dict.reset);
+  check(
+    "frost range input present with 0–100 step 1 and the default 36",
+    frostRange?.props?.type === "range" &&
+      frostRange.props.min === "0" &&
+      frostRange.props.max === "100" &&
+      frostRange.props.step === "1" &&
+      frostRange.props.value === "36",
+  );
+  check("frost range is disabled in desktop mode", frostRange?.props?.disabled === true);
+  /* The reset buttons are not "the first .dshDesktopSettingsButton" any more:
+     the background pick button and the frost reset come first. Scope the
+     tint-reset check to the fine-tuning group, its original subject. */
+  const fineGroup = nodes.find(
+    (n) =>
+      classNameOf(n) === "dshDesktopSettingsGroup" &&
+      n.props["aria-labelledby"] === "dsh-vibrancy-fine-title",
+  );
+  const fineButtons = walk(fineGroup).filter((n) => classNameOf(n) === "dshDesktopSettingsButton");
+  const button = fineButtons.find((n) => n.props.children === dict.reset);
   check(
     "reset button present and disabled at the default",
     !!button && button.props.disabled === true,
-    `${buttons.length} button(s)`,
+    `${fineButtons.length} button(s)`,
   );
   check("hint line present", !!byClass(tree, "dshDesktopSettingsHint"));
   check("no missing locale key in zh", missing.length === 0, missing.join(", "));
@@ -552,7 +570,35 @@ console.log("J. every stylesheet touches material properties only");
     "--dsw-alias-bg-base",
     "--dsw-alias-bg-layer-1",
     "background",
+    "background-color",
   ]);
+  /* v1.5.1: inline code was re-opaqueing the frosted pane; the fix is a 45%
+     color-mix chip. It must stay a material tint (no layout declarations) and
+     must leave fenced blocks alone (the :not(pre) guard). */
+  const coreRules = parseRules(core.textContent).rules;
+  const codeRule = coreRules.find((r) => r.selectors.some((s) => s.includes("_markdown_")));
+  check(
+    "sheet 1 gates the inline-code chip on the same window scope",
+    !!codeRule && codeRule.selectors.every((s) => s.startsWith(WINDOW_SCOPE)),
+    codeRule ? codeRule.selectors.join(" | ") : "rule missing",
+  );
+  check(
+    "inline-code rule targets markdown code spans but not fenced blocks",
+    !!codeRule && codeRule.selectors.some((s) => /:not\(pre\)\s*>\s*code/.test(s)),
+    codeRule ? codeRule.selectors.join(" | ") : "",
+  );
+  check(
+    "inline-code rule declares only a translucent chip background",
+    !!codeRule && JSON.stringify(declaredProps([codeRule])) === JSON.stringify(["background-color"]),
+    codeRule ? declaredProps([codeRule]).join(", ") : "",
+  );
+  check(
+    "inline-code chip blends the upstream token 45% into transparent",
+    !!codeRule &&
+      /background-color:\s*color-mix\(in srgb,\s*var\(--dsw-alias-markdown-inline-code,\s*#808080\)\s*45%,\s*transparent\)/.test(
+        codeRule.body,
+      ),
+  );
   auditSheet("sheet 2 sidebar", panel.textContent, ["--dsw-alias-bg-base", "background"]);
   check(
     "sheet 2 is anchored on the sidebar's own attribute marker, not a class hash",
@@ -883,7 +929,11 @@ console.log("M. background image: sheet 4, state machine, settings group");
       /position:\s*fixed/.test(stripped) && /inset:\s*-64px/.test(stripped) && /z-index:\s*-1/.test(stripped),
     );
     check("bg sheet: pointer-events: none", /pointer-events:\s*none/.test(stripped));
-    check("bg sheet: picture blurred at 36px", /filter:\s*blur\(36px\)/.test(stripped));
+    check(
+      "bg sheet: blur radius comes from --dsh-vib-frost with a 36px fallback",
+      /filter:\s*blur\(var\(--dsh-vib-frost,\s*36px\)\)/.test(stripped),
+    );
+    check("bg sheet: no hard-coded blur(36px) literal is left", !/filter:\s*blur\(36px\)/.test(stripped));
     check(
       "bg sheet: picture comes from the inline variable, cover/center/no-repeat",
       /background-image:\s*var\(--dsh-vib-bg-image\)/.test(stripped) &&
@@ -928,7 +978,7 @@ console.log("M. background image: sheet 4, state machine, settings group");
 
     let { nodes } = render(t);
     const groups = nodes.filter((n) => classNameOf(n) === "dshDesktopSettingsGroup");
-    check("bg group: the section now has 5 groups", groups.length === 5, `${groups.length} group(s)`);
+    check("bg group: the section now has 6 groups", groups.length === 6, `${groups.length} group(s)`);
     check(
       "bg group: sits between appearance and sidebar",
       groups[1]?.props?.["aria-labelledby"] === "dsh-vibrancy-bg-title" &&
@@ -1002,6 +1052,194 @@ console.log("M. background image: sheet 4, state machine, settings group");
     ({ nodes } = render(tEn));
     check("bg group: no missing locale key in zh", missing.length === 0, [...new Set(missing)].join(", "));
     check("bg group: no missing locale key in en", missingEn.length === 0, [...new Set(missingEn)].join(", "));
+  }
+}
+
+console.log("N. wallpaper blur (frost): state machine + the sixth settings group");
+{
+  const FROST_KEY = "dsh-vibrancy-skin:frost";
+  const FROST_VAR = "--dsh-vib-frost";
+
+  // (a) fresh profile: 36 by default, applied but not persisted.
+  {
+    const env = makeEnv({ withBody: true });
+    const exported = env.module();
+    exported.apply(makeCtx({}).ctx);
+    const api = env.win.dshVibrancySkin;
+    check(
+      "frost: a fresh profile reports the numeric default 36",
+      api.getState().frost === 36 && typeof api.getState().frost === "number",
+      String(api.getState().frost),
+    );
+    check("frost: the default is not written to localStorage", env.store.get(FROST_KEY) === undefined);
+    check("frost: the default reaches the body as 36px", env.props.get(FROST_VAR) === "36px", env.props.get(FROST_VAR));
+    check("frost: setFrost is exposed on window.dshVibrancySkin", typeof api.setFrost === "function");
+  }
+
+  // (b) clamping, rounding, invalid input, default-key deletion.
+  {
+    const env = makeEnv({ withBody: true });
+    const exported = env.module();
+    exported.apply(makeCtx({}).ctx);
+    const api = env.win.dshVibrancySkin;
+    check("frost: setFrost(120) clamps to 100", api.setFrost(120) === 100 && api.getState().frost === 100);
+    check(
+      "frost: 100 persists as '100' and applies 100px",
+      env.store.get(FROST_KEY) === "100" && env.props.get(FROST_VAR) === "100px",
+    );
+    check(
+      "frost: setFrost(-5) clamps to 0",
+      api.setFrost(-5) === 0 && env.store.get(FROST_KEY) === "0" && env.props.get(FROST_VAR) === "0px",
+    );
+    check("frost: getState().frost is a number", typeof api.getState().frost === "number");
+    check(
+      "frost: setFrost('abc') is ignored",
+      api.setFrost("abc") === 0 && api.getState().frost === 0 && env.props.get(FROST_VAR) === "0px",
+    );
+    check("frost: fractions round to an integer", api.setFrost(63.6) === 64 && env.store.get(FROST_KEY) === "64");
+    check(
+      "frost: returning to 36 deletes the storage key instead of writing '36'",
+      api.setFrost(36) === 36 && env.store.get(FROST_KEY) === undefined && env.props.get(FROST_VAR) === "36px",
+    );
+    check(
+      "frost: setEnabled(false) cleans the inline radius, setEnabled(true) restores it",
+      api.setEnabled(false) === false &&
+        env.props.get(FROST_VAR) === undefined &&
+        api.setEnabled(true) === true &&
+        env.props.get(FROST_VAR) === "36px",
+    );
+    api.setFrost(82);
+    api.resetAll();
+    check(
+      "frost: resetAll returns to 36 and drops the key",
+      api.getState().frost === 36 && env.store.get(FROST_KEY) === undefined && env.props.get(FROST_VAR) === "36px",
+    );
+  }
+
+  // (c) persistence across boots, with a fallback for junk values.
+  {
+    const env = makeEnv({ withBody: true });
+    env.store.set(FROST_KEY, "72");
+    const exported = env.module();
+    check(
+      "frost: a stored 72 reaches the body at materialization",
+      env.props.get(FROST_VAR) === "72px",
+      env.props.get(FROST_VAR),
+    );
+    exported.apply(makeCtx({}).ctx);
+    check("frost: a stored 72 survives the next boot", env.win.dshVibrancySkin.getState().frost === 72);
+
+    const junk = makeEnv({ withBody: true });
+    junk.store.set(FROST_KEY, "abc");
+    junk.module();
+    check(
+      "frost: an unparseable stored value falls back to 36",
+      junk.props.get(FROST_VAR) === "36px",
+      junk.props.get(FROST_VAR),
+    );
+  }
+
+  // (d) the sixth settings group.
+  {
+    const env = makeEnv({ withBody: true });
+    const exported = env.module();
+    const { ctx, calls } = makeCtx({});
+    exported.apply(ctx);
+    const { dicts } = calls.localeRegister[0];
+    const dict = dicts.zh;
+    const missing = [];
+    const tChecked = (key) => {
+      if (!(key in dict)) missing.push(key);
+      return dict[key] ?? key;
+    };
+    const t = (key) => dict[key] ?? key;
+
+    const render = (translate) => {
+      env.react.beginRender();
+      CURRENT_REACT = env.react;
+      return walk(calls.slotRegister[0].component({ t: translate }));
+    };
+
+    let nodes = render(tChecked);
+    const groups = nodes.filter((n) => classNameOf(n) === "dshDesktopSettingsGroup");
+    check("frost group: the section now has 6 groups", groups.length === 6, `${groups.length} group(s)`);
+    check(
+      "frost group: sits between strength and fine-tuning",
+      groups[3]?.props?.["aria-labelledby"] === "dsh-vibrancy-strength-title" &&
+        groups[4]?.props?.["aria-labelledby"] === "dsh-vibrancy-frost-title" &&
+        groups[5]?.props?.["aria-labelledby"] === "dsh-vibrancy-fine-title",
+    );
+    const frostSection = groups.find((n) => n.props["aria-labelledby"] === "dsh-vibrancy-frost-title");
+    const frostNodes = walk(frostSection);
+    const range = frostNodes.find((n) => n.type === "input");
+    check(
+      "frost group: slider is 0–100 step 1 and shows 36",
+      range?.props?.type === "range" &&
+        range.props.min === "0" &&
+        range.props.max === "100" &&
+        range.props.step === "1" &&
+        range.props.value === "36",
+    );
+    check("frost group: slider is disabled in desktop mode", range?.props?.disabled === true);
+    const frostButtons = frostNodes.filter((n) => classNameOf(n) === "dshDesktopSettingsButton");
+    check("frost group: reset button disabled at the default", frostButtons[0]?.props?.disabled === true);
+    check(
+      "frost group: read-out shows the current radius",
+      frostNodes.some((n) => n.type === "span" && n.props.children === "36px"),
+    );
+    check(
+      "frost group: desktop mode explains the fixed macOS blur",
+      frostNodes.some((n) => n.props.children === dict.frostDesktopHint),
+    );
+
+    env.win.dshVibrancySkin.setBgMode("wallpaper");
+    nodes = render(t);
+    const wallpaperSection = nodes.find(
+      (n) =>
+        classNameOf(n) === "dshDesktopSettingsGroup" &&
+        n.props["aria-labelledby"] === "dsh-vibrancy-frost-title",
+    );
+    const wallpaperNodes = walk(wallpaperSection);
+    const wallpaperRange = wallpaperNodes.find((n) => n.type === "input");
+    check("frost group: slider becomes enabled in wallpaper mode", wallpaperRange?.props?.disabled === false);
+    check(
+      "frost group: wallpaper mode swaps in the live hint",
+      wallpaperNodes.some((n) => n.props.children === dict.frostHint),
+    );
+
+    env.win.dshVibrancySkin.setFrost(50);
+    nodes = render(t);
+    const liveSection = nodes.find(
+      (n) =>
+        classNameOf(n) === "dshDesktopSettingsGroup" &&
+        n.props["aria-labelledby"] === "dsh-vibrancy-frost-title",
+    );
+    const liveNodes = walk(liveSection);
+    const liveRange = liveNodes.find((n) => n.type === "input");
+    const liveReset = liveNodes.filter((n) => classNameOf(n) === "dshDesktopSettingsButton")[0];
+    check(
+      "frost group: slider + read-out follow setFrost",
+      liveRange?.props?.value === "50" &&
+        liveNodes.some((n) => n.type === "span" && n.props.children === "50px"),
+    );
+    check("frost group: reset enables once the radius is not the default", liveReset?.props?.disabled === false);
+    check("frost group: no missing locale key in zh", missing.length === 0, [...new Set(missing)].join(", "));
+
+    const missingEn = [];
+    const enNodes = render((key) => {
+      if (!(key in dicts.en)) missingEn.push(key);
+      return dicts.en[key] ?? key;
+    });
+    const enFrost = enNodes.find(
+      (n) =>
+        classNameOf(n) === "dshDesktopSettingsGroup" &&
+        n.props["aria-labelledby"] === "dsh-vibrancy-frost-title",
+    );
+    check(
+      "frost group: renders in en without a missing key",
+      !!enFrost && missingEn.length === 0,
+      [...new Set(missingEn)].join(", "),
+    );
   }
 }
 

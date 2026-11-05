@@ -81,10 +81,13 @@ for LOG in "$LOGDIR/desktop-next.log" "$LOGDIR"/dsh-"$(date +%Y-%m-%d)".log; do
   N=$(grep -c . "$LOG" 2>/dev/null || true)
   echo "  -- $(basename "$LOG"): $N row(s) on disk"
   grep -E 'vibrancy|client-modules|ClientPackage|boot activation' "$LOG" 2>/dev/null | tail -5 | sed 's/^/       /' || true
-  if grep -qE 'vibrancy-skin.*not found' "$LOG"; then
-    bad "mount NOT effective ('not found' warning present)"
+  # Match the documented loader warning exactly. A loose "vibrancy-skin.*not
+  # found" also hits unrelated host.tools errors that merely quote the repo
+  # path ("old_string was not found in .../dsh-vibrancy-skin/client.js").
+  if grep -qE 'patch: entry "vibrancy-skin" not found' "$LOG"; then
+    bad "mount NOT effective ('patch: entry \"vibrancy-skin\" not found' present)"
   else
-    ok "no 'not found' warning for the plugin"
+    ok "no 'patch entry not found' warning for the plugin"
   fi
   if grep -qE 'ClientPackageCompositionError|FAILED to' "$LOG"; then
     bad "client-modules rejected a package declaration (see rows above)"
@@ -149,9 +152,27 @@ grep -q 'body::before' "$PKG/client.js" \
 grep -qE 'background-image:[[:space:]]*var\(--dsh-vib-bg-image\)' "$PKG/client.js" \
   && ok "background-image is driven by var(--dsh-vib-bg-image)" \
   || bad "--dsh-vib-bg-image wiring missing"
+grep -qE 'filter:[[:space:]]*blur\(var\(--dsh-vib-frost,[[:space:]]*36px\)\)' "$PKG/client.js" \
+  && ok "background blur radius is driven by --dsh-vib-frost (36px fallback)" \
+  || bad "blur(var(--dsh-vib-frost, 36px)) on the background layer missing"
 grep -qE 'filter:[[:space:]]*blur\(36px\)' "$PKG/client.js" \
-  && ok "background picture is blurred at 36px (blur on the picture, never backdrop-filter)" \
-  || bad "blur(36px) on the background layer missing"
+  && bad "a hard-coded blur(36px) survived — the frost slider would do nothing" \
+  || ok "no hard-coded blur(36px) literal (radius is adjustable)"
+grep -q -- '--dsh-vib-frost' "$PKG/client.js" \
+  && ok "frost radius travels as --dsh-vib-frost" \
+  || bad "--dsh-vib-frost wiring missing"
+grep -q 'dsh-vibrancy-skin:frost' "$PKG/client.js" \
+  && ok "frost radius persists under dsh-vibrancy-skin:frost" \
+  || bad "frost storage key missing"
+grep -qE '\[class\*="_markdown_"\]' "$PKG/client.js" \
+  && ok "inline-code chip is scoped to markdown content" \
+  || bad "markdown inline-code rule missing"
+grep -qF 'color-mix(in srgb, var(--dsw-alias-markdown-inline-code, #808080) 45%, transparent)' "$PKG/client.js" \
+  && ok "inline code blends 45% into transparent (no re-opaque pane)" \
+  || bad "inline-code color-mix rule missing"
+grep -qE ':not\(pre\)[[:space:]]*>[[:space:]]*code' "$PKG/client.js" \
+  && ok "fenced code blocks are deliberately left opaque" \
+  || bad ":not(pre) > code guard missing"
 grep -qE 'pointer-events:[[:space:]]*none' "$PKG/client.js" \
   && ok "background layer is pointer-events: none" \
   || bad "background layer missing pointer-events: none"
@@ -163,6 +184,6 @@ grep -q 'indexedDB' "$PKG/client.js" \
   || bad "IndexedDB storage path missing"
 node -e '
 const v = require("'"$PKG"'/package.json").version;
-console.log((v === "1.5.0" ? "\u2713" : "\u2717") + " installed version = " + v + (v === "1.5.0" ? "" : " (expected 1.5.0)"));
+console.log((v === "1.5.1" ? "\u2713" : "\u2717") + " installed version = " + v + (v === "1.5.1" ? "" : " (expected 1.5.1)"));
 ' 2>&1 | sed 's/^/  /'
 

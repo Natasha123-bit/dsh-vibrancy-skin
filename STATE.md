@@ -4,7 +4,8 @@
 **06:12** as **v1.3.1**, **06:20** as the same 1.3.1 with the temporary diagnostic probe
 stripped back out, **2026-10-02 23:57 (+0800)** as **v1.3.2** (dialog/overlay opacity fix),
 and **2026-10-28 03:5x** as **v1.4.0** (DSH NEXT 2.0.20-next / dsh 0.2.1-rc.3 port),
-and **2026-11-06** as **v1.5.0** (background image frost: wallpaper / desktop modes)
+**2026-11-06** as **v1.5.0** (background image frost: wallpaper / desktop modes), and the same day as **v1.5.1**
+(frost dial + translucent inline code)
 **Source of truth:** this directory. `~/.dsh/profiles/desktop/node_modules/dsh-vibrancy-skin`
 is a **symlink to this directory**, so an edit here is already the installed copy — there is no
 copy step and no second place to keep in sync.
@@ -37,6 +38,34 @@ re-pointed at the new path (old directory kept as a symlink to it). No plugin co
   25 是**加那 2 条断言之前**（v1.3.1 时期）的数，当时忘记 +2。
 - **路径校正**：旧目录实际在 `/Users/leixiaokang/Documents/DSH-Default/.dsh-vibrancy-skin-old-20261004-033509`。
 - 顺手发现、**未动**（留作待办）：`.backup/LAST_BACKUP_TS` 仍写 `20260928-054614`，未反映 2026-10-04 的迁前备份。
+
+## v1.5.1 delta (frost dial + translucent inline code)
+
+**需求（用户 2026-11-06，v1.5.0 验收通过后）：** ①「新增一个磨砂程度的调节？…最高变成纯雾面，最低变成纯透明」；
+②「字符块能否也做成透明磨砂的…在使用浅色壁纸的时候不那么突兀」。
+
+**改动（只动 `client.js`，1364 → 1476 行）：**
+
+| 位置 | 内容 |
+| --- | --- |
+| 第 4 张表 | `filter: blur(36px)` → `filter: blur(var(--dsh-vib-frost, 36px))`（不再有硬编码半径） |
+| 新状态 `frost` | localStorage `:frost`，默认 36，0–100 整数（clamp/round；非法忽略；等于默认时删 key） |
+| 内联变量 | `applyFrostInline()` 写 `--dsh-vib-frost: ${n}px`；总开关关闭时 `removeProperty` |
+| API | `setFrost()`；`getState()` 增 `frost`；`resetAll()` 复位 36；console banner 增 frost |
+| 设置页 | 第 6 组「磨砂度」（强度与微调之间）：range 0–100 + `${n}px` + 恢复默认；`desktop` 模式 disabled + `frostDesktopHint` |
+| 行内代码 | sheet 1 末尾：`[class*="_markdown_"] :not(pre) > code { background-color: color-mix(in srgb, var(--dsw-alias-markdown-inline-code, #808080) 45%, transparent) }` |
+
+**为什么桌面模式置灰：** 那层模糊由 macOS `NSVisualEffectView` 材质决定，CSS 改不了；不拿半透明雾面罩假装（会更灰、对比度下降）。
+**为什么行内代码是实心的：** 上游 `--dsw-alias-markdown-inline-code` 是实色（浅 `neutral-50` / 深 `neutral-800`），
+45% `color-mix` 让主题与壁纸同时透出来；围栏代码块保持不透明以保证可读性。
+
+**验收（2026-11-06）：**
+* `node smoke-test.mjs` → **204 ✓ / 0 ✗**（+36：frost 状态/夹取/持久化/滑杆/disabled、第 4 表 var、行内代码审计）；
+* `bash verify.sh` → **42 ✓ / 0 ✗**（+6：var blur、无硬编码 36、`:frost`、`--dsh-vib-frost`、`_markdown_`、color-mix；§8 期望 1.5.1）；
+* `node visual-bg.mjs` → 0/36/100 三张 1280×800 样张（`/tmp/dsh-bg-preview-{0,36,100}.png`）：
+  0 清晰、100 趋于均匀，三张均无灰雾/硬边；
+* 窗口内观感待用户 `Cmd+R` 后目视（滑杆两端 + 浅色壁纸下的行内代码）；
+* `client.js` md5 **`7ee155e1194ef5422b57cd6d8d96489d`**，与活体软链一致。
 
 ## v1.5.0 delta (background image: wallpaper / desktop modes)
 
