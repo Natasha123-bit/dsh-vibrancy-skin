@@ -38,7 +38,13 @@
   描述只陈述功能、不带营销词；插件 macOS 专属，条目描述已写明。
 - **验收**：`node smoke-test.mjs` **230/230**；`bash verify.sh` **69 ✓ / 0 ✗**；`npm pack --dry-run`
   6 个文件（新增 LICENSE，47.8 kB）。
-- **未做**：没 push、没开 PR、没 npm publish（本机 npm 未登录）；`client.js` md5 仍为
+- **已 push**：`42e209d`（`6823019..42e209d`），pull request 尚未提交（等用户审核）。
+- **2026-11-07 晚 · 市场素材**：新增 `assets/icon.png`（512²）、`assets/icon-192.png`、`assets/icon-96.png`
+  （由 `generate_image` 生成后裁切 + 圆角遮罩，四角透明）；新增 `assets/screenshots/conversation.png`
+  与 `assets/screenshots/settings.png`（2560x1650，侧栏折叠 / 设置页，界面内无账号名、余额、路径等个人信息）；
+  仓库根新增 `screenshots.json`（2 条相对路径）；`market/awesome-entry.yml` 增加 `icon` 字段
+  （GitHub raw 托管）。
+- **未做**：没开 PR；没 npm publish（本机 npm 未登录，`npm whoami` 报 need auth）；`client.js` md5 仍为
   `568668ca77e230df1371c8c279c8455c`。
 
 ## 2026-11-07 — 窗口验收通过：README §5 全部项目（v1.4.0–v1.6.1）
