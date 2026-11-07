@@ -54,7 +54,7 @@ DSH Desktop 的**纯 CSS 注入插件**：没有构建步骤、没有依赖、�
 
 ## 当前状态（2026-11-07）
 
-- 版本 **v1.6.1**，`client.js` md5 `568668ca77e230df1371c8c279c8455c`（2155 行）；git `main`，tag `v1.2.0` / `v1.3.2`，**无远端**。
+- 版本 **v1.6.1**，`client.js` md5 `568668ca77e230df1371c8c279c8455c`（2155 行）；git `main`（跟踪 `origin` → `https://github.com/Natasha123-bit/dsh-vibrancy-skin`），tag `v1.2.0` / `v1.3.2`。
 - 环境（2026-11-07）：**DSH NEXT 2.0.22-next**（宿主端口 127.0.0.1:64769）/
   `@deepseek-ai/dsh*` **0.2.2-rc.1**；`@deepseek-ai/*` 从 `app.asar/node_modules` 解析。
   本插件对 0.2.x 无需豁免，profile 里没有 `compatibility.json`。
