@@ -3,7 +3,8 @@
 macOS 原生 Vibrancy（磨砂玻璃）材质皮肤，用于 DSH NEXT / DSH Desktop 的**会话面板**，
 并为第三方侧边栏插件（dsh-better-sidebar）提供同款磨砂，**两级效果各自独立开关**；
 v1.5.0 起还可以上传一张本地图片当玻璃底图（「透到壁纸」/「透到桌面」）；
-v1.5.2 起把气泡、输入框、文件块与 cost-meter 的卡片/控件也改成同族半透明（§1.4）。
+v1.5.2 起把气泡、输入框、文件块与 cost-meter 的卡片/控件也改成同族半透明（§1.4）；
+v1.6.0 起同时适配官方 DeepSeek Harness 客户端（共用同一个 `~/.dsh` profile，无需重装），原因与取证见 §1.0.2。
 **只改材质，不改布局**：前三张样式表只触碰 `background` 与自定义属性；第四张（背景图）
 只画一个 `body::before` 装饰层（`position` / `inset` / `z-index` / `filter` / `background-*`，
 `pointer-events:none`），不参与布局，不碰任何 grid / 尺寸 / 圆角 / 内边距 / 溢出。
@@ -49,6 +50,54 @@ DSH NEXT 之前，材质门控是 `<body data-dsh-desktop-platform data-dsh-desk
 同一版里外壳 class 也全换了（`.dshDesktopConversationSurface` /
 `.dshDesktopRightbarSurface` / `.dshDesktopMacCaptionRow` 均 0 命中），故锚点一并改到
 AppFrame 的三列上。
+v1.6.0 起门控放宽为 `html[data-platform="darwin"]:not([data-next-material="off"])`，原因见 §1.0.2。
+
+### 1.0.2 v1.6.0 官方客户端适配：为什么门控是「darwin 且未显式 off」
+
+本机同时装着两个桌面壳：DSH NEXT（2.0.22-next / `@deepseek-ai/dsh` 0.2.2-rc.1）与官方客户端
+`/Applications/DeepSeek Harness.app`（bundle `com.deepseek.dsh`，0.2.2-rc.1，`app.asar` 213,240,777 B）。
+官方客户端的 `/lib/preload-app.cjs` **只**写
+`document.documentElement.dataset.platform = process.platform`（darwin），另写
+fullscreen / windowsTitlebar / windowsMenu / inputModality / dsThemeSource / dsDarkTheme /
+htmlPreview / sidebarBrowserFrame / shellOverlay，**从不写 `dataset.nextMaterial`**。而它的
+`/lib/main.js` 的 `createWindow` 在 darwin 下恒定带 `titleBarStyle:"hiddenInset"`、
+`trafficLightPosition:{x:16,y:18}`、`vibrancy:"sidebar"`、`visualEffectState:"active"`、
+`backgroundColor:"#00000000"`，整个文件 grep `macosMaterial` **0 命中**——官方窗口本身就是原生磨砂，
+没有「关闭材质」这个状态。所以语义必须反过来：**属性不存在 = 有磨砂**。
+
+**为什么不保留 exact `transparent`**：官方客户端下该属性永远是 `undefined`，exact 门控一条都不命中
+（旧门控在官方窗口形态下的实测值是空串，见下面的五用例），整片皮肤会再次全灭；而「官方客户端」与
+「NEXT 且材质 off」在页面 DOM 上没有第二个静态信号可区分——`data-platform` 两边都是 `darwin`，
+其余 preload 属性是窗口/主题/输入模态，与材质无关；`macosMaterial` 只存在于 NEXT 的 `main.js`，
+不落到页面里，去读宿主日志或 profile 又会让纯 CSS 注入变成有状态读取。既然「官方」与
+「NEXT transparent」都该磨砂，唯一正确的判别式就是「darwin 且不是 off」。
+
+**`:not()` 的语义**：`html[data-platform="darwin"]:not([data-next-material="off"])` 在 NEXT 下仍只有
+两种取值——`transparent` 命中（与 v1.5.2 行为逐字一致）、`off` 不命中（窗口 opaque，保持原生）；
+在官方客户端下属性缺失，`:not()` 自然成立。四张样式表全部同步，**没有第二个门控分支**，
+所以不存在「一张表开、另一张表关」的半开状态。设置页的 `active` 判定同步改为
+`root.dataset.platform === "darwin" && root.dataset.nextMaterial !== "off"`，官方客户端不再误报
+「当前窗口没有启用玻璃背景」。
+
+**已知副作用（用户已接受）**：NEXT 的 `nextMaterial` 由 preload 异步 `invoke` 写入，用户把材质设为
+`off` 时，启动瞬间属性尚未到位，门控会短暂命中一次，出现一次玻璃色闪现，随后消失；
+官方客户端属性永不存在，无此问题。
+
+**取证**：
+
+- 两个 App 共用 `~/.dsh`：官方 `resolveDesktopPaths()` → `profile=~/.dsh/profiles/desktop`、
+  `lock=~/.dsh/profiles/desktop/lock`，`defaultDshHome()=~/.dsh`（`DSH_HOME` 可覆盖）。profile 的
+  `dsh.profile.bundles` 已含 `dsh-vibrancy-skin`、`dependencies` 为
+  `link:/Users/leixiaokang/Documents/DSH-Projects/dsh-vibrancy-skin` → 官方客户端加载**同一个 profile**，
+  无需重装。
+- 两份 `@deepseek-ai/dsh-client-ui-layout/lib/client.js` 同构、CSS 规则内容一致，仅 CSS-module
+  哈希前缀不同：官方 `PIRFFq_centerCol/_rightbarCol/_bottomRow/_frame/_sidebarCol`（38,890 B，
+  md5 `f33fd1cf2068380d1c8172131cfa7f8d`），NEXT `VFpnAa_*`（38,933 B）。插件只锚
+  `[class*="_centerCol"]` 这类稳定局部名，两边都命中。
+- 真实 CSS 引擎（chrome-headless-shell 1223，把 `client.js` 四张表的 CSS 原样抽出注入，读 `body`
+  的 `--dsh-vib-tint-strength`）：官方形态（platform=darwin，**无** nextMaterial）→ `"40%"`；
+  NEXT transparent → `"40%"`；NEXT off → `""`；platform=linux → `""`；对照：同一官方形态 +
+  **旧**门控 → `""`（证明旧门控在官方客户端确实整片失效）。探针页在 `/tmp/gate-probe/`（临时文件，不入仓库）。
 
 ### 三条不可松弛的红线
 
@@ -256,7 +305,7 @@ html[…] :is(dialog, [role="dialog"], [role="alertdialog"]) {
 ### 第 4 张表只做三件事
 
 ```css
-html[data-platform="darwin"][data-next-material="transparent"] body::before {
+html[data-platform="darwin"]:not([data-next-material="off"]) body::before {
   content: "";
   position: fixed;
   inset: -64px;              /* 让模糊边缘落在视口外，避免硬边 */
@@ -269,6 +318,9 @@ html[data-platform="darwin"][data-next-material="transparent"] body::before {
   filter: blur(var(--dsh-vib-frost, 36px)); /* 半径由设置页「磨砂度」控制 */
 }
 ```
+
+门控字面量自 v1.6.0 起为 `html[data-platform="darwin"]:not([data-next-material="off"])`
+（官方客户端不写 material key 时同样命中），见 §1.0.2；下面三件事不变。
 
 - **开关 = `<style>` 存在与否**（沿用既有约定）：`wanted = enabled && bgMode==="wallpaper" && bgUrl!==null`。
   切回「透到桌面」、关总开关、移除图片 → 整张表消失，零残留。
@@ -323,7 +375,7 @@ html[data-platform="darwin"][data-next-material="transparent"] body::before {
 v1.5.1 在门控作用域内把它改成 45% 不透明（颜色仍跟主题走）：
 
 ```css
-html[data-platform="darwin"][data-next-material="transparent"] [class*="_markdown_"] :not(pre) > code {
+html[data-platform="darwin"]:not([data-next-material="off"]) [class*="_markdown_"] :not(pre) > code {
   background-color: color-mix(in srgb, var(--dsw-alias-markdown-inline-code, #808080) 45%, transparent);
 }
 ```
@@ -331,6 +383,8 @@ html[data-platform="darwin"][data-next-material="transparent"] [class*="_markdow
 - 不写死颜色：换主题时 `--dsw-alias-markdown-inline-code` 变，`color-mix` 跟着变。
 - 保留上游的细边框，块仍有边界；`padding` / `border-radius` 一律不碰（只改材质）。
 - **围栏代码块（```）不动**：大块代码需要稳定底色保证可读性。
+- 门控字面量 v1.6.0 起为 `html[data-platform="darwin"]:not([data-next-material="off"])`
+  （官方客户端同样命中），见 §1.0.2。
 
 ## 1.4 半透明表面（v1.5.2）：五处「实心块」为什么还扎眼，怎么改
 
@@ -346,7 +400,8 @@ v1.5.0 / v1.5.1 之后，壁纸能透出来了，但有五类表面仍然是一�
 
 原则和 §1.3 一致：**只改材质，不碰布局**；颜色一律 `color-mix(in srgb, <原 token> N%, transparent)`，
 不写死 RGB，换主题/换 tint 都跟着走。全部规则挂在
-`html[data-platform="darwin"][data-next-material="transparent"]` 下，因此关总开关就整体退回实心。
+`html[data-platform="darwin"]:not([data-next-material="off"])` 下，因此关总开关就整体退回实心
+（v1.6.0 起放宽，官方客户端不写 material key 也命中，见 §1.0.2）。
 
 **为什么五处不用同一个百分比**：它们面积、层级、文字密度都不同。气泡面积小且文字少，58% 就够透；
 输入框要长期承载光标与多行文字，64% 保证对比度；文件块是信息卡片，52% 仍能看清文件名；
@@ -556,7 +611,7 @@ cp "$P/package.json" "$P/package.json.bak-$(date +%Y%m%d-%H%M%S)"
       与 `lib/preload-app.cjs` 实际写的属性逐字一致（在 app.asar 里 grep 到源头）
 - [x] 三个不透明面的锚点取自 ui-layout 的实际规则（`_centerCol` / `_bottomRow` / `_rightbarCol`
       都实测 `background: var(--dsw-alias-bg-base)`），且 `[data-platform=darwin]` 覆盖规则也一并核对
-- [x] `node smoke-test.mjs` → **117/117**；`bash verify.sh` → **29 ✓ / 0 ✗**（v1.5.0 为 **168/168** 与 **36 ✓ / 0 ✗**；v1.5.1 为 **204/204** 与 **42 ✓ / 0 ✗**；v1.5.2 为 **221/221** 与 **62 ✓ / 0 ✗**，见下面几段）
+- [x] `node smoke-test.mjs` → **117/117**；`bash verify.sh` → **29 ✓ / 0 ✗**（v1.5.0 为 **168/168** 与 **36 ✓ / 0 ✗**；v1.5.1 为 **204/204** 与 **42 ✓ / 0 ✗**；v1.5.2 为 **221/221** 与 **62 ✓ / 0 ✗**；v1.6.0 为 **224/224** 与 **63 ✓ / 0 ✗**，见下面几段）
 - [x] 已确认上游会自己透明的面（`_frame` / `_sidebarCol`）**不**被本插件重复染色
 - [x] 弹层快照改为直取静态调色板（`bluish-00` / `-950` / `-875`），无环、与 ui-theme 语义等价
 
@@ -625,6 +680,16 @@ cp "$P/package.json" "$P/package.json.bak-$(date +%Y%m%d-%H%M%S)"
 - [ ] 侧栏底部的 cost-meter 卡片（今日/余额/平价进度条）半透明，数字对比度足够
 - [ ] 顶部/输入区的「费用 ¥0」「费用明细」两个小控件不糊成一团
 - [ ] 关总开关 → 以上五处全部回到实心（规则随门控一起失效）
+
+**官方客户端适配（v1.6.0，2026-11-07）**
+
+- [x] `node smoke-test.mjs` → **224/224**；`bash verify.sh` → **63 ✓ / 0 ✗**（§8 期望版本 1.6.0）
+- [x] 29 处门控全部为 `html[data-platform="darwin"]:not([data-next-material="off"])`，
+      且 `verify.sh` 断言「无 exact `material=transparent` 残留」
+- [x] 设置页 `active` 判定同步（`nextMaterial !== "off"`），官方客户端不再误报「材质未透明」
+- [x] 真实 CSS 引擎五用例（官方 / transparent / off / linux / 旧门控对照），官方形态下 tint 解析为 40%
+- [ ] 在官方客户端 `Cmd+R` 后用眼睛确认：中栏 / 侧栏 / 底栏透出桌面、气泡 / 输入框半透明、
+      弹层仍不透明（此项留给用户）
 
 **还没被明确看过的（都不影响已达成效果）**
 
@@ -703,4 +768,4 @@ function evaluatePluginCompatibility(manifest, exemptions = {}, runtimeVersion =
 | dshmarket@1.66.8 | `^0.2.0-rc.1` | 满足 |
 | @michengai/dsh-archive-manager@1.0.11 | 显式含 `0.2.0-rc.2` | 满足 |
 | @michengai/dsh-btw@0.1.15 | 显式含 `0.2.0-rc.2` | 满足 |
-| **dsh-vibrancy-skin@1.5.2** | **无 `peerDependencies`** | **放行** |
+| **dsh-vibrancy-skin@1.6.0** | **无 `peerDependencies`** | **放行** |

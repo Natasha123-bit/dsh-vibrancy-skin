@@ -103,6 +103,7 @@ echo "  /plugins/<pkg>/client.js is token-guarded even on loopback: unauthentica
 echo "  Real confirmation is the renderer console line:"
 echo "    [dsh-vibrancy-skin] applied — enabled true, sidebar panels true, deep glass false,"
 echo "                                            tint 40%, theme ..., platform darwin, material transparent"
+echo "  (official DeepSeek Harness client: the same line ends with \"material n/a\" — it writes no material key)"
 echo "  Open it with Cmd+Opt+I (DSH NEXT: View -> Developer -> Toggle Developer Tools);"
 echo "  if the line is absent, the client half was not served."
 echo "  UI confirmation: Settings -> 磨砂玻璃 / Vibrancy (a sibling of the built-in 桌面设置 page),"
@@ -119,14 +120,17 @@ grep -q '\[class\*="_rightbarCol"\]' "$PKG/client.js" \
   && ok "sidebar also scoped to the AppFrame's rightbar column (where the visible dock lives)" \
   || bad "rightbar-column anchor missing (the visible sidebar is painted by the app's dock)"
 grep -q '\[class\*="_centerCol"\]' "$PKG/client.js" \
-  && ok "main pane anchored on the AppFrame center column (2.0.20-next shell)" \
+  && ok "main pane anchored on the AppFrame center column (2.0.22-next / official shell)" \
   || bad "center-column anchor missing — the conversation pane would stay opaque"
 grep -q '\[class\*="_bottomRow"\]' "$PKG/client.js" \
   && ok "bottom row anchored on the AppFrame grid row" \
   || bad "bottom-row anchor missing"
-grep -q 'html\[data-platform="darwin"\]\[data-next-material="transparent"\]' "$PKG/client.js" \
-  && ok "gated on html[data-platform][data-next-material] (the 2.0.20-next protocol)" \
-  || bad "NEXT root gate missing"
+grep -qF 'html[data-platform="darwin"]:not([data-next-material="off"])' "$PKG/client.js" \
+  && ok "gated on html[data-platform=darwin] minus material=off (NEXT + official client)" \
+  || bad "window gate missing — the skin would be inert"
+grep -qF '[data-next-material="transparent"]' "$PKG/client.js" \
+  && bad "an exact material=transparent gate survived — inert in the official client (which writes no material key)" \
+  || ok "no exact material=transparent gate left"
 grep -q 'data-dsh-desktop-platform' "$PKG/client.js" \
   && bad "a retired body-level data-dsh-desktop-* gate survived (it matches nothing in 2.0.20-next)" \
   || ok "no retired body-level gate left"
@@ -212,6 +216,6 @@ grep -q 'indexedDB' "$PKG/client.js" \
   || bad "IndexedDB storage path missing"
 node -e '
 const v = require("'"$PKG"'/package.json").version;
-console.log((v === "1.5.2" ? "\u2713" : "\u2717") + " installed version = " + v + (v === "1.5.2" ? "" : " (expected 1.5.2)"));
+console.log((v === "1.6.0" ? "\u2713" : "\u2717") + " installed version = " + v + (v === "1.6.0" ? "" : " (expected 1.6.0)"));
 ' 2>&1 | sed 's/^/  /'
 

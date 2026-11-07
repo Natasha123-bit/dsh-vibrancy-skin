@@ -6,7 +6,8 @@ stripped back out, **2026-10-02 23:57 (+0800)** as **v1.3.2** (dialog/overlay op
 and **2026-10-28 03:5x** as **v1.4.0** (DSH NEXT 2.0.20-next / dsh 0.2.1-rc.3 port),
 **2026-11-06** as **v1.5.0** (background image frost: wallpaper / desktop modes), and the same day as **v1.5.1**
 (frost dial + translucent inline code), then **v1.5.2** (translucent bubble / composer / file card / cost-meter
-surfaces)
+surfaces), and **2026-11-07** as **v1.6.0** (official DeepSeek Harness client 0.2.2-rc.1: gate widened from
+material=transparent to darwin-minus-off).
 **Source of truth:** this directory. `~/.dsh/profiles/desktop/node_modules/dsh-vibrancy-skin`
 is a **symlink to this directory**, so an edit here is already the installed copy — there is no
 copy step and no second place to keep in sync.
@@ -39,6 +40,60 @@ re-pointed at the new path (old directory kept as a symlink to it). No plugin co
   25 是**加那 2 条断言之前**（v1.3.1 时期）的数，当时忘记 +2。
 - **路径校正**：旧目录实际在 `/Users/leixiaokang/Documents/DSH-Default/.dsh-vibrancy-skin-old-20261004-033509`。
 - 顺手发现、**未动**（留作待办）：`.backup/LAST_BACKUP_TS` 仍写 `20260928-054614`，未反映 2026-10-04 的迁前备份。
+
+## v1.6.0 delta (official DeepSeek Harness client: window gate widened)
+
+**需求（用户 2026-11-07）：** 「给插件做一下deepseek harness（官方客户端）的适配」。版本号拍板为 **v1.6.0**。
+
+**根因（取证自 `/Applications/DeepSeek Harness.app/Contents/Resources/app.asar`）：** 官方客户端
+（bundle `com.deepseek.dsh`，0.2.2-rc.1，`app.asar` 213,240,777 B）与 DSH NEXT 共用同一个
+`~/.dsh` profile，但 `lib/preload-app.cjs` **只**写 `document.documentElement.dataset.platform`
+（另有 fullscreen / windowsTitlebar / windowsMenu / inputModality / dsThemeSource / dsDarkTheme /
+htmlPreview / sidebarBrowserFrame / shellOverlay），**从不写 `dataset.nextMaterial`**；`lib/main.js`
+的 `createWindow` 在 darwin 下恒定带 `vibrancy:"sidebar"` / `visualEffectState:"active"` /
+`backgroundColor:"#00000000"`，全文件无 `macosMaterial` 命中 → 官方窗口本身就是磨砂，
+exact `material=transparent` 门控在它上面一条都不命中（整片失效）。
+
+**改动（`client.js` 1552 行；`smoke-test.mjs`、`verify.sh`、`package.json`）：**
+
+| 位置 | v1.5.2 | v1.6.0 |
+| --- | --- | --- |
+| 门控字面量（29 处，含 1 处注释） | `html[data-platform="darwin"][data-next-material="transparent"]` | `html[data-platform="darwin"]:not([data-next-material="off"])` |
+| 设置页 `active` 判定 | `nextMaterial === "transparent"` | `platform === "darwin" && nextMaterial !== "off"` |
+| `client.js` 文件头 | 无官方客户端段 | 新增 1b 段（官方 preload 无 material key / main.js 恒有 vibrancy）；规则 4 改写 |
+| `smoke-test.mjs` | 221 ✓ | **224 ✓ / 0 ✗**（新增 I2 段：官方形态无 `data-next-material` 时不报警、装两张表、日志行含 `material n/a`；WINDOW_SCOPE / 正则 / `body::before` 三处字面量同步） |
+| `verify.sh` | 62 ✓ | **63 ✓ / 0 ✗**（新增「没有残留 exact `material=transparent` 门控」；§8 期望 1.6.0；门控断言文案 `html[data-platform=darwin] minus material=off (NEXT + official client)`） |
+| `package.json` | 1.5.2 | 1.6.0 |
+
+**为什么是 `:not([data-next-material="off"])` 而不是保留 exact transparent：** 官方客户端属性永远
+缺失，exact 会让皮肤在官方下整片失效（真实引擎实测空串）；而「官方」与「NEXT off」没有第二个
+静态 DOM 信号可区分——`data-platform` 两边都是 `darwin`，`macosMaterial` 只在 NEXT 的 `main.js` 里，
+不落页面。NEXT 下 `transparent` 命中、`off` 不命中；官方属性缺失 → `:not()` 成立。设置页判定同步，
+官方客户端不再误报「当前窗口没有启用玻璃背景」。
+
+**验收（2026-11-07，可复核）：**
+
+* `node smoke-test.mjs` → **224 ✓ / 0 ✗**；`bash verify.sh` → **63 ✓ / 0 ✗**（§8 期望 1.6.0）；
+* 真实 CSS 引擎五用例（chrome-headless-shell 1223，把 `client.js` 四张表的 CSS 原样抽出注入，
+  读 `body` 的 `--dsh-vib-tint-strength`）：
+
+  | 形态 | 新门控 | 旧门控（对照） |
+  | --- | --- | --- |
+  | 官方（platform=darwin，无 nextMaterial） | `"40%"` | `""` |
+  | NEXT transparent | `"40%"` | `"40%"` |
+  | NEXT off | `""` | `""` |
+  | platform=linux | `""` | `""` |
+
+  官方形态 `"40%"` = 新门控命中；同形态 + 旧门控 `""` = 旧门控在官方客户端确实整片失效；
+* `client.js` md5 **`b61e535f1efe8bb19628e95e626f6d38`**（1552 行），与活体软链一致；
+* 窗口内观感待用户在官方客户端 `Cmd+R` 后目视（清单在 README §5）。
+
+**副作用（用户已接受）：** NEXT 的 `nextMaterial` 由 preload 异步 `invoke` 写入，材质设为 `off` 时
+启动瞬间属性尚未到位，门控会短暂命中一次，可能出现一次玻璃色闪现，随后消失；官方客户端属性永不
+存在，无此问题。
+
+**盘上文件：** 仓库内 `client.js` / `smoke-test.mjs` / `verify.sh` / `package.json` 四个文件被改；
+`~/.dsh/profiles/desktop/node_modules/dsh-vibrancy-skin` 仍是软链，没有拷贝步骤，改仓库即活体安装。
 
 ## v1.5.2 delta (translucent surfaces: bubble / composer / file card / cost-meter)
 
@@ -443,9 +498,11 @@ only after the host half has already loaded successfully.
    Layout is untouched by construction.
 3. The tint is cycle-free — built from `--dsw-static-neutral-bluish-00/950`, never from
    `--dsw-alias-bg-base` (self-reference would blank the pane).
-4. Everything is scoped to `html[data-platform="darwin"][data-next-material="transparent"]`
-   (v1.3.2 and earlier: `body[data-dsh-desktop-*]`) so any failure degrades to the upstream
-   opaque look instead of an unreadable window.
+4. Everything is scoped to `html[data-platform="darwin"]:not([data-next-material="off"])`
+   (v1.6.0: this also matches the official DeepSeek Harness client, which never writes the
+   material key; the old exact `…[data-next-material="transparent"]` literal is only valid for
+   v1.5.2 and earlier; v1.3.2 and earlier: `body[data-dsh-desktop-*]`) so any failure degrades
+   to the upstream opaque look instead of an unreadable window.
 5. Third-party plugins are never modified, not even their shipped CSS. Only two things may be
    relied upon: (a) the plugin-owned attribute markers it writes itself
    (`[data-dsh-better-sidebar]`), and (b) the generic `--dsw-alias-*` tokens its author

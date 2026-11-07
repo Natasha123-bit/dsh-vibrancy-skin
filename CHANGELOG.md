@@ -18,12 +18,40 @@
 | **v1.4.0** | ✓ | DSH NEXT 适配；未打 tag |
 | **v1.5.0** | ✓ | 背景图磨砂 |
 | **v1.5.1** | ✓ | 磨砂度 + 行内代码半透明 |
-| **v1.5.2** | ✓ | 当前 HEAD（五处表面半透明）|
+| **v1.5.2** | ✓ | 五处表面半透明 |
+| **v1.6.0** | ✓ | 当前 HEAD（官方客户端适配：门控放宽） |
 
 **不按文档"重建" v1.3.0 / v1.3.1**：重建物与当时实际运行的代码不是同一个东西，写进历史会污染「能回滚」的语义。
 它们是本仓库建立之前就存在的缺口，不是迁移造成的；迁移唯一新增的好处是 **v1.2.0 之后的每一版都会真正留痕**。
 
 ---
+
+## 2026-11-07 — v1.6.0：官方 DeepSeek Harness 客户端适配（门控放宽）
+
+- **触发**：用户要求「给插件做一下deepseek harness（官方客户端）的适配」；版本号拍板为 v1.6.0。
+- **根因**：官方客户端 `/Applications/DeepSeek Harness.app`（bundle `com.deepseek.dsh`，0.2.2-rc.1，
+  `app.asar` 213,240,777 B）与 DSH NEXT 共用 `~/.dsh` profile，但其 `lib/preload-app.cjs`
+  **只**写 `data-platform`，不写 `nextMaterial`；`lib/main.js` 的 `createWindow` 在 darwin 下
+  恒定带 `vibrancy:"sidebar"` / `visualEffectState:"active"` / `backgroundColor:"#00000000"`，
+  无 `macosMaterial` 分支 → 官方窗口本身就是磨砂，exact `material=transparent` 门控整片失配。
+- **改动**：29 处门控字面量（含 1 处注释）
+  `html[data-platform="darwin"][data-next-material="transparent"]`
+  → `html[data-platform="darwin"]:not([data-next-material="off"])`；设置页 `active` 判定改为
+  `platform === "darwin" && nextMaterial !== "off"`；文件头新增 1b 段、规则 4 改写。
+  `client.js` 1540 → 1552 行；`smoke-test.mjs` 221 → **224**（新增 I2 段），`verify.sh`
+  62 → **63**（新增无 exact transparent 残留断言，§8 期望 1.6.0）；`package.json` 1.6.0。
+- **为什么不用 `data-platform` 单条件**：`macosMaterial=off` 时窗口没有 vibrancy，皮肤必须不命中；
+  官方客户端没有该属性，`:not([data-next-material="off"])` 同时满足两者（NEXT 的
+  transparent/off 行为不变）。
+- **证据**：两份 ui-layout `client.js` 同构，仅 CSS-module 前缀不同（官方 `PIRFFq_*` 38,890 B /
+  NEXT `VFpnAa_*` 38,933 B），`[class*="_centerCol"]` 等锚点两边都命中；真实 CSS 引擎五用例
+  （官方 / transparent / off / linux / 旧门控对照）中官方形态解析出 tint `40%`，旧门控为 `""`。
+- **验收**：`node smoke-test.mjs` **224 ✓ / 0 ✗**；`bash verify.sh` **63 ✓ / 0 ✗**（§8 期望 1.6.0）；
+  `client.js` md5 `b61e535f1efe8bb19628e95e626f6d38`，与活体软链一致。窗口观感待用户
+  在官方客户端 `Cmd+R` 后目视。
+- **副作用（已接受）**：NEXT 材质为 `off` 时，启动瞬间 `nextMaterial` 尚未异步写入，可能出现
+  一次短暂玻璃色闪现；官方客户端无此问题。
+- **未改**：无 `backdrop-filter`、无布局属性、无 `peerDependencies`、不碰第三方插件文件。
 
 ## 2026-11-06 — v1.5.2：五处表面半透明（cost 卡片/角标、文件块、气泡、输入框）
 

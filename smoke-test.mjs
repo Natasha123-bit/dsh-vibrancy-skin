@@ -97,7 +97,9 @@ function makeEnv({ withBody }) {
     readyState: withBody ? "interactive" : "loading",
     head: { appendChild: (el) => headChildren.push(el) },
     /* DSH NEXT announces the window on <html>: lib/preload-app.cjs sets
-       documentElement.dataset.platform and ...dataset.nextMaterial. */
+       documentElement.dataset.platform and ...dataset.nextMaterial. The
+       official DeepSeek Harness client sets only dataset.platform, so tests
+       delete nextMaterial to model it. */
     documentElement: {
       dataset: { platform: "darwin", nextMaterial: "transparent" },
       appendChild: (el) => headChildren.push(el),
@@ -529,10 +531,42 @@ console.log("I. does not touch the body when the window is not frosted");
   check("warns that the material is not transparent", !!byClass(tree, "dshDesktopSettingsNotice"));
 }
 
+console.log("I2. the official DeepSeek Harness client (no material key) gets the skin");
+{
+  const env = makeEnv({ withBody: true });
+  delete env.document.documentElement.dataset.nextMaterial;
+  const exported = env.module();
+  const { ctx, calls } = makeCtx({});
+  exported.apply(ctx);
+  const { dicts } = calls.localeRegister[0];
+  const t = (key) => dicts.zh[key] ?? key;
+  env.react.beginRender();
+  const tree = calls.slotRegister[0].component({ t });
+  check(
+    "does not warn when data-next-material is absent (official client is frosted)",
+    !byClass(tree, "dshDesktopSettingsNotice"),
+  );
+  check(
+    "installs both default sheets with the material key absent",
+    env.headChildren.length === 2 &&
+      env.headChildren[0].id === "dsh-vibrancy-skin-styles" &&
+      env.headChildren[1].id === "dsh-vibrancy-skin-panel-styles",
+    env.headChildren.map((e) => e.id).join(", "),
+  );
+  check(
+    "log line reports the official shape instead of pretending to know the material",
+    env.logs.some((line) => line.includes("platform darwin") && line.includes("material n/a")),
+    env.logs.join(" | "),
+  );
+}
+
 console.log("J. every stylesheet touches material properties only");
 {
+  /* One canonical gate: darwin minus an explicitly opaque window. NEXT writes
+     data-next-material transparent|off; the official client writes nothing, so
+     the attribute is absent and :not() still matches. */
   const WINDOW_SCOPE =
-    'html[data-platform="darwin"][data-next-material="transparent"]';
+    'html[data-platform="darwin"]:not([data-next-material="off"])';
 
   const auditSheet = (label, css, allowed) => {
     const { stripped, rules } = parseRules(css);
@@ -771,7 +805,7 @@ console.log("J. every stylesheet touches material properties only");
   );
   check(
     "the overlay restore is not scoped to one pane (portals may move the dialog)",
-    /^html\[data-platform="darwin"\]\[data-next-material="transparent"\] :is\(dialog/m.test(
+    /^html\[data-platform="darwin"\]:not\(\[data-next-material="off"\]\) :is\(dialog/m.test(
       core.textContent,
     ),
   );
@@ -865,7 +899,7 @@ console.log("M. background image: sheet 4, state machine, settings group");
   const BG_ID = "dsh-vibrancy-skin-bg-styles";
   const BG_VAR = "--dsh-vib-bg-image";
   const BG_SELECTOR =
-    'html[data-platform="darwin"][data-next-material="transparent"] body::before';
+    'html[data-platform="darwin"]:not([data-next-material="off"]) body::before';
   /* The decoration layer legitimately uses position/inset/filter/z-index —
      it must not be run through J's "no layout property" regex. */
   const BG_ALLOWED = [

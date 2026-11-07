@@ -19,7 +19,8 @@ window.__ModuleLoader__.load({
     const CSS_CONTENT = `
 /* ==========================================================================
    dsh-vibrancy-skin — macOS native vibrancy for DSH NEXT / DeepSeek Harness
-   (verified against DSH Desktop 2.0.20-next + @deepseek-ai/dsh 0.2.1-rc.3)
+   (verified against DSH Desktop 2.0.22-next, @deepseek-ai/dsh 0.2.2-rc.1 and
+    the official DeepSeek Harness client 0.2.2-rc.1)
    --------------------------------------------------------------------------
    HOW THE FROST IS PRODUCED
      The window is still created with
@@ -36,6 +37,13 @@ window.__ModuleLoader__.load({
         The old body-level data-dsh-desktop-* keys appear ZERO times in
         2.0.20-next, so every v1.3.2 selector silently stopped matching. This
         is the whole reason the skin "died" at once rather than on one panel.
+     1b. THE OFFICIAL CLIENT HAS THE SAME PRELOAD MINUS THE MATERIAL KEY. It
+        writes data-platform only, and its main.js unconditionally creates the
+        window with the vibrancy triple above (no macosMaterial switch exists
+        in that build). The gate is therefore "darwin AND NOT material=off"
+        instead of "material=transparent": NEXT keeps both behaviours
+        (transparent matches, off is excluded) and the official client matches
+        because the attribute is simply absent.
      2. THE SHELL LEARNED TO BE TRANSLUCENT ITSELF. On darwin the app frame is
         already 'background: 0 0' and the sidebar column is already
         'color-mix(in srgb, var(--dsw-specific-sidebar-fill) 90%,
@@ -72,9 +80,10 @@ window.__ModuleLoader__.load({
         because that is the very property being overridden (a self reference
         resolves to the guaranteed-invalid value and blanks the pane).
      4. Everything is scoped to
-        html[data-platform="darwin"][data-next-material="transparent"],
-        so the plugin is inert on every other platform / material setting and
-        falls back cleanly to the upstream look.
+        html[data-platform="darwin"]:not([data-next-material="off"]),
+        so the plugin is inert on every other platform (and on NEXT with the
+        window material explicitly switched off), and falls back cleanly to
+        the upstream look.
 
    TUNABLING
      One knob: --dsh-vib-tint-strength (below), also exposed in
@@ -87,7 +96,7 @@ window.__ModuleLoader__.load({
    Light and dark are separate rules because the palette is expressed as
    theme-invariant static tokens; body[data-ds-dark-theme] is the only
    switch upstream uses for dark mode. */
-html[data-platform="darwin"][data-next-material="transparent"] body {
+html[data-platform="darwin"]:not([data-next-material="off"]) body {
   --dsh-vib-tint-strength: 40%;
   --dsh-vib-pane: color-mix(
     in srgb,
@@ -107,7 +116,7 @@ html[data-platform="darwin"][data-next-material="transparent"] body {
   --dsh-vib-bg-layer-1-solid: var(--dsw-static-neutral-bluish-00, #fff);
 }
 
-html[data-platform="darwin"][data-next-material="transparent"] body[data-ds-dark-theme] {
+html[data-platform="darwin"]:not([data-next-material="off"]) body[data-ds-dark-theme] {
   --dsh-vib-pane: color-mix(
     in srgb,
     var(--dsw-static-neutral-bluish-950, #151517) var(--dsh-vib-tint-strength),
@@ -129,7 +138,7 @@ html[data-platform="darwin"][data-next-material="transparent"] body[data-ds-dark
    The column itself is set transparent on purpose: the active panel paints
    the tint, so the frost is exactly one layer deep instead of two stacked
    semi-transparent layers (which would silently double the opacity). */
-html[data-platform="darwin"][data-next-material="transparent"] [class*="_centerCol"] {
+html[data-platform="darwin"]:not([data-next-material="off"]) [class*="_centerCol"] {
   background: transparent !important;
   --dsw-alias-bg-base: var(--dsh-vib-pane);
 }
@@ -141,7 +150,7 @@ html[data-platform="darwin"][data-next-material="transparent"] [class*="_centerC
    darwin the frame itself is 'background: 0 0' and --dsh-frame-top-clearance
    (48px) keeps the traffic lights over the frozen sidebar, so there is no
    strip left to tint. */
-html[data-platform="darwin"][data-next-material="transparent"] [class*="_bottomRow"] {
+html[data-platform="darwin"]:not([data-next-material="off"]) [class*="_bottomRow"] {
   background: transparent !important;
   --dsw-alias-bg-base: var(--dsh-vib-pane);
 }
@@ -168,7 +177,7 @@ html[data-platform="darwin"][data-next-material="transparent"] [class*="_bottomR
    Scope: the whole gated document, not one pane. Dialogs are few, are always
    meant to be readable, and a portal can move the same dialog between the
    pane, the title strip and <body> without any CSS change on our side. */
-html[data-platform="darwin"][data-next-material="transparent"] :is(dialog, [role="dialog"], [role="alertdialog"]) {
+html[data-platform="darwin"]:not([data-next-material="off"]) :is(dialog, [role="dialog"], [role="alertdialog"]) {
   --dsw-alias-bg-base: var(--dsh-vib-bg-base-solid);
   --dsw-alias-bg-layer-1: var(--dsh-vib-bg-layer-1-solid);
 }
@@ -196,7 +205,7 @@ html[data-platform="darwin"][data-next-material="transparent"] :is(dialog, [role
    Fenced blocks (<pre> > code) are deliberately NOT touched: they are large
    surfaces, and a translucent one would hurt long code reads. Material only —
    no layout property is declared here. */
-html[data-platform="darwin"][data-next-material="transparent"] [class*="_markdown_"] :not(pre) > code {
+html[data-platform="darwin"]:not([data-next-material="off"]) [class*="_markdown_"] :not(pre) > code {
   background-color: color-mix(in srgb, var(--dsw-alias-markdown-inline-code, #808080) 45%, transparent);
 }
 
@@ -221,46 +230,46 @@ html[data-platform="darwin"][data-next-material="transparent"] [class*="_markdow
    standalone .cm-bbox (rail / dialogs) keeps a 50% fallback. .cm-chip and
    the "cost details" button get 42% / 46% so the meter reads as one
    translucent family. */
-html[data-platform="darwin"][data-next-material="transparent"] body {
+html[data-platform="darwin"]:not([data-next-material="off"]) body {
   --dsw-specific-bubble: color-mix(in srgb, var(--dsw-static-deepseek-50) 58%, transparent);
 }
 
-html[data-platform="darwin"][data-next-material="transparent"] body[data-ds-dark-theme] {
+html[data-platform="darwin"]:not([data-next-material="off"]) body[data-ds-dark-theme] {
   --dsw-specific-bubble: color-mix(in srgb, var(--dsw-static-neutral-bluish-850) 58%, transparent);
 }
 
-html[data-platform="darwin"][data-next-material="transparent"] [data-composer-card] {
+html[data-platform="darwin"]:not([data-next-material="off"]) [data-composer-card] {
   background: color-mix(in srgb, var(--dsw-specific-input-major) 64%, transparent);
 }
 
-html[data-platform="darwin"][data-next-material="transparent"] [data-changed-files] {
+html[data-platform="darwin"]:not([data-next-material="off"]) [data-changed-files] {
   background: color-mix(in srgb, var(--dsw-alias-bg-layer-1) 52%, transparent);
   --changes-fill: color-mix(in srgb, var(--dsw-static-neutral-50) 52%, transparent);
   --changes-hover: color-mix(in srgb, var(--dsw-static-neutral-100) 70%, transparent);
 }
 
-html[data-platform="darwin"][data-next-material="transparent"] body[data-ds-dark-theme] [data-changed-files] {
+html[data-platform="darwin"]:not([data-next-material="off"]) body[data-ds-dark-theme] [data-changed-files] {
   --changes-fill: color-mix(in srgb, var(--dsw-static-neutral-850) 52%, transparent);
   --changes-hover: color-mix(in srgb, var(--dsw-static-neutral-800) 70%, transparent);
 }
 
-html[data-platform="darwin"][data-next-material="transparent"] .cm-footer-stack.summary:not(.rail) {
+html[data-platform="darwin"]:not([data-next-material="off"]) .cm-footer-stack.summary:not(.rail) {
   background: color-mix(in srgb, var(--dsw-alias-bg-layer-1) 44%, transparent);
 }
 
-html[data-platform="darwin"][data-next-material="transparent"] .cm-footer-stack.summary:not(.rail) .cm-bbox {
+html[data-platform="darwin"]:not([data-next-material="off"]) .cm-footer-stack.summary:not(.rail) .cm-bbox {
   background: transparent;
 }
 
-html[data-platform="darwin"][data-next-material="transparent"] .cm-bbox {
+html[data-platform="darwin"]:not([data-next-material="off"]) .cm-bbox {
   background: color-mix(in srgb, var(--dsw-alias-bg-layer-1) 50%, transparent);
 }
 
-html[data-platform="darwin"][data-next-material="transparent"] .cm-chip {
+html[data-platform="darwin"]:not([data-next-material="off"]) .cm-chip {
   background: color-mix(in srgb, var(--dsw-alias-bg-layer-2) 42%, transparent);
 }
 
-html[data-platform="darwin"][data-next-material="transparent"] .cm-btn.cm-stat-entry {
+html[data-platform="darwin"]:not([data-next-material="off"]) .cm-btn.cm-stat-entry {
   background: color-mix(in srgb, var(--dsw-alias-button-elevated-fill) 46%, transparent);
 }
 `;
@@ -327,20 +336,20 @@ html[data-platform="darwin"][data-next-material="transparent"] .cm-btn.cm-stat-e
    builds, the local name is stable, and a miss costs nothing but a missed
    tint.
    ========================================================================== */
-html[data-platform="darwin"][data-next-material="transparent"] [class*="_rightbarCol"],
-html[data-platform="darwin"][data-next-material="transparent"] [data-dsh-better-sidebar],
-html[data-platform="darwin"][data-next-material="transparent"] [data-dockkit-host="dock"] {
+html[data-platform="darwin"]:not([data-next-material="off"]) [class*="_rightbarCol"],
+html[data-platform="darwin"]:not([data-next-material="off"]) [data-dsh-better-sidebar],
+html[data-platform="darwin"]:not([data-next-material="off"]) [data-dockkit-host="dock"] {
   --dsw-alias-bg-base: var(--dsh-vib-pane);
 }
 
-html[data-platform="darwin"][data-next-material="transparent"] [class*="_rightbarCol"] {
+html[data-platform="darwin"]:not([data-next-material="off"]) [class*="_rightbarCol"] {
   background: transparent !important;
 }
 
-html[data-platform="darwin"][data-next-material="transparent"] [data-dsh-better-sidebar] [class*="_tabBar"],
-html[data-platform="darwin"][data-next-material="transparent"] [data-dsh-better-sidebar] [class*="_bottomPanel"],
-html[data-platform="darwin"][data-next-material="transparent"] [class*="_rightbarCol"] [class*="_tabHost_"],
-html[data-platform="darwin"][data-next-material="transparent"] [data-dockkit-host="dock"] [class*="_tabHost_"] {
+html[data-platform="darwin"]:not([data-next-material="off"]) [data-dsh-better-sidebar] [class*="_tabBar"],
+html[data-platform="darwin"]:not([data-next-material="off"]) [data-dsh-better-sidebar] [class*="_bottomPanel"],
+html[data-platform="darwin"]:not([data-next-material="off"]) [class*="_rightbarCol"] [class*="_tabHost_"],
+html[data-platform="darwin"]:not([data-next-material="off"]) [data-dockkit-host="dock"] [class*="_tabHost_"] {
   background: var(--dsh-vib-pane);
 }
 `;
@@ -369,9 +378,9 @@ html[data-platform="darwin"][data-next-material="transparent"] [data-dockkit-hos
    sheet 2, so text there keeps the same contrast as the conversation pane,
    while layering more translucency behind text is a taste call.
    ========================================================================== */
-html[data-platform="darwin"][data-next-material="transparent"] [class*="_rightbarCol"],
-html[data-platform="darwin"][data-next-material="transparent"] [data-dsh-better-sidebar],
-html[data-platform="darwin"][data-next-material="transparent"] [data-dockkit-host="dock"] {
+html[data-platform="darwin"]:not([data-next-material="off"]) [class*="_rightbarCol"],
+html[data-platform="darwin"]:not([data-next-material="off"]) [data-dsh-better-sidebar],
+html[data-platform="darwin"]:not([data-next-material="off"]) [data-dockkit-host="dock"] {
   --dsw-alias-bg-layer-1: var(--dsh-vib-pane);
 }
 `;
@@ -389,7 +398,7 @@ html[data-platform="darwin"][data-next-material="transparent"] [data-dockkit-hos
        the picture itself, never to the window.
        ====================================================================== */
     const BG_CSS_CONTENT = `
-html[data-platform="darwin"][data-next-material="transparent"] body::before {
+html[data-platform="darwin"]:not([data-next-material="off"]) body::before {
   content: "";
   position: fixed;
   inset: -64px;
@@ -1156,16 +1165,19 @@ html[data-platform="darwin"][data-next-material="transparent"] body::before {
         setTint(`${n}%`);
       };
 
-      /* The window-material gate lives on <html> since DSH NEXT: preload-app.cjs
-         writes documentElement.dataset.platform and ...dataset.nextMaterial.
-         Reading the root also covers the settings page rendering before <body>
-         has been touched by the shell. */
+      /* The window gate lives on <html> since DSH NEXT: preload-app.cjs writes
+         documentElement.dataset.platform and ...dataset.nextMaterial, while the
+         official DeepSeek Harness client writes only dataset.platform and lets
+         main.js create the window with vibrancy unconditionally. Absent
+         material therefore means "frost available" (official client), and only
+         an explicit "off" means the window is opaque. Reading the root also
+         covers the settings page rendering before <body> has been touched. */
       const root = document.documentElement;
       const active =
         root !== null &&
         root !== undefined &&
         root.dataset.platform === "darwin" &&
-        root.dataset.nextMaterial === "transparent";
+        root.dataset.nextMaterial !== "off";
 
       const sidebar = hasBetterSidebar();
 
