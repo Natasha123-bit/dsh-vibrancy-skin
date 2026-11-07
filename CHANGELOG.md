@@ -44,8 +44,12 @@
   仓库根新增 `screenshots.json`（2 条相对路径，符合 1–8 张规范）。
 - **图标回调**：先用 `generate_image` 生成了一版图标并写进条目 `icon` 字段，用户看后否决（「好丑，不要图标」），
   已删除 `assets/icon*.png` 与条目 `icon` 字段；市场将回退到作者头像。
-- **未做**：没开 PR；没 npm publish（本机 npm 未登录，`npm whoami` 报 need auth）；`client.js` md5 仍为
-  `568668ca77e230df1371c8c279c8455c`。
+- **npm 发布完成**：`dsh-vibrancy-skin@1.6.1` 已发布到 registry（public，latest = 1.6.1，
+  tarball 47.8 kB / 6 文件，shasum `513c30f1…`），过程：`npm login --auth-type=web` 写入 `~/.npmrc`，
+  账号随后启用 2FA（`auth-and-writes`），`npm publish` 走网页 2FA 授权后成功；registry 里同时留下一个
+  npm 自动生成的 `0.0.0-stage` 占位版本（「Temporary package placeholder for staged publishing」），
+  不影响 `latest` 解析。
+- **未做**：没开 PR（等用户审核）；`client.js` md5 仍为 `568668ca77e230df1371c8c279c8455c`。
 
 ## 2026-11-07 — 窗口验收通过：README §5 全部项目（v1.4.0–v1.6.1）
 
