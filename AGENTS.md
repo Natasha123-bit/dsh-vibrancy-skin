@@ -63,27 +63,26 @@ DSH Desktop 的**纯 CSS 注入插件**：没有构建步骤、没有依赖、�
 - **v1.6.1 是官方客户端设置页修复**：官方壳丢掉了 `dshDesktopSettings*` 样式层（Next 由
   `<style id="dsh-desktop-settings-styles">` 注入，563 行 / 17,653 字符），插件自带逐字拷贝的
   `SETTINGS_CSS`，`ensureSettingsStyles()` 仅在宿主 id 缺失时懒安装；Next 一行不注入，dispose 摘自身。
-  静态侧验收 230/230 + 69/0；官方客户端设置页观感待用户 `Cmd+R`。详见 STATE.md 的 v1.6.1 delta 与 README §1.0.3。
+  静态侧验收 230/230 + 69/0；官方客户端设置页观感已由用户 `Cmd+R` 确认（2026-11-07）。详见 STATE.md 的 v1.6.1 delta 与 README §1.0.3。
 - **v1.6.0 是官方客户端适配**：29 处门控字面量放宽为 `html[data-platform="darwin"]:not([data-next-material="off"])`
   （官方客户端从不写 `data-next-material`，旧 exact `transparent` 在官方下整片失效），设置页 active 判定同步为
-  `nextMaterial !== "off"`。静态侧验收 224/224 + 63/0，真实 CSS 引擎五用例通过；窗口观感待用户在官方客户端
-  `Cmd+R` 后确认。详见 STATE.md 的 v1.6.0 delta 与 README §1.0.2。
+  `nextMaterial !== "off"`。静态侧验收 224/224 + 63/0，真实 CSS 引擎五用例通过；窗口观感已由用户在官方客户端确认（2026-11-07）。详见 STATE.md 的 v1.6.0 delta 与 README §1.0.2。
 - **v1.5.2 是五处表面半透明**：用户气泡 58%、输入框 64%、文件编辑块 52%（hover 70%）、
   cost 侧栏卡片 44% + 内层透明、`cm-bbox` 50% 兜底、`cm-chip` 42%、`cm-stat-entry` 46%，
-  全部 `color-mix` 原 token。静态侧验收 221/221 + 62/0，临时 mock 样张通过；窗口观感待用户 `Cmd+R`。
+  全部 `color-mix` 原 token。静态侧验收 221/221 + 62/0，临时 mock 样张通过；窗口观感已确认（2026-11-07）。
   详见 STATE.md 的 v1.5.2 delta。
 - **v1.5.1 是磨砂度 + 行内代码**：第 4 张表改用 `blur(var(--dsh-vib-frost, 36px))`，设置页新增
   「磨砂度」0–100 滑杆（`desktop` 模式下置灰）；sheet 1 把行内代码背景改成 45% `color-mix` 半透明
   （围栏代码块不动）。静态侧验收 204/204 + 42/0。详见 STATE.md 的 v1.5.1 delta。
 - **v1.5.0 是背景图**：新增「透到桌面 / 透到壁纸」模式，壁纸 = 上传图压缩后存 IndexedDB，
   由第 4 张表铺 `body::before` 做玻璃底图（模糊半径 v1.5.1 起可调，不是 `backdrop-filter`）。
-  静态侧验收 168/168 + 36/0，视觉样张通过；窗口观感待用户 `Cmd+R` 确认。详见 STATE.md 的 v1.5.0 delta。
+  静态侧验收 168/168 + 36/0，视觉样张通过；窗口观感已确认（2026-11-07）。详见 STATE.md 的 v1.5.0 delta。
 - **v1.4.0 是 DSH NEXT 适配**：门控从 `<body data-dsh-desktop-*>` 搬到
   `html[data-platform][data-next-material]`，外壳类名换成 AppFrame 的哈希类
   （锚 `_centerCol` / `_bottomRow` / `_rightbarCol`）。静态侧验收 117/117 + 29/0，
-  窗口观感待用户 `Cmd+R` 确认。详见 STATE.md 的 v1.4.0 delta。
+  窗口观感已确认（2026-11-07）。详见 STATE.md 的 v1.4.0 delta。
 - **v1.3.2 验收通过（2026-10-04，用户确认）**：dsh-cost-meter「费用明细」面板实心可读、弹层不透明
-  （README §5 那两条已改 `[x]`）。清单里仍剩 9 条 `[ ]`，属"顺手扫一眼"级别，不影响已达成效果。
+  （README §5 那两条已改 `[x]`）。当时清单里剩的 9 条已在 2026-11-07 的窗口验收中全部确认。
 - 计数基线（2026-11-07 实测校正）：`smoke-test.mjs` **230** 条、`verify.sh` **69** 项。
   历史值：v1.6.0 为 224 / 63，v1.5.2 为 221 / 62，v1.5.1 为 204 / 42，v1.5.0 为 168 / 36，v1.4.0 为 117 / 29，v1.3.2 为 112 / 27；`verify.sh` 的条数会随 `~/.dsh/logs`
   里存在几个日志文件浮动（每存在一个文件 +2 条），所以以 `grep -c ✓` / `✗` 的实测为准，不要按文档倒推。

@@ -42,6 +42,13 @@ re-pointed at the new path (old directory kept as a symlink to it). No plugin co
 - **路径校正**：旧目录实际在 `/Users/leixiaokang/Documents/DSH-Default/.dsh-vibrancy-skin-old-20261004-033509`。
 - 顺手发现、**未动**（留作待办）：`.backup/LAST_BACKUP_TS` 仍写 `20260928-054614`，未反映 2026-10-04 的迁前备份。
 
+**2026-11-07 窗口验收（用户确认）：** 用户在官方客户端执行 `Cmd+R` 后，README §5 里**全部**待验收项
+（含 v1.4.0 / v1.5.0 / v1.5.1 / v1.5.2 / v1.6.0 的历史遗留项与新加的 v1.6.1 设置页项）均通过：
+中栏/底栏/better-sidebar 透桌面、设置页不再误报材质、浅色主题正常、壁纸选图/切换/关总开关/重启恢复/
+移除图片正常、磨砂度滑杆与置灰分支正常、行内代码与五处半透明表面正常、开关回退与深层玻璃即时生效、
+`Cmd+B` 与 resize handle、发送按钮/补全弹层/右键菜单保持不透明、拖拽分栏与标签切换正常。
+README §5 的 30 个 `[ ]` 已全部改为 `[x]`。
+
 ## v1.6.1 delta (settings chrome for the official client)
 
 **需求（用户 2026-11-07，官方客户端截图原话）：** 「我已经切到官方客户端了，这个设置界面根本没法用啊」。
@@ -76,7 +83,7 @@ apply 的 dispose 里删除自身 sheet、不动宿主 sheet。`client.js` 1552 
 * headless 样张 `/tmp/settings-preview/after.png`（1640×2800，2x，无宿主样式 + `SETTINGS_CSS`）显示标题
   22/16 px、开关 36×20 轨道 + 白色 knob（开蓝底、关灰底）、选中预设蓝描边、滑杆与重置均原生外观；
 * `client.js` md5 **`568668ca77e230df1371c8c279c8455c`**（2155 行），与活体软链一致；
-* 官方客户端里的实际观感待用户 `Cmd+R` 后目视（README §5 清单）。
+* 官方客户端里的实际观感：**2026-11-07 用户目视确认通过**（README §5 清单）。
 
 **盘上文件：** `client.js` / `smoke-test.mjs` / `verify.sh` / `package.json`，以及 `README.md` / `STATE.md` /
 `CHANGELOG.md` / `AGENTS.md`。**未改：** 门控、四张材质表、第三方插件；无 `backdrop-filter`、无 `peerDependencies`。
@@ -126,7 +133,7 @@ exact `material=transparent` 门控在它上面一条都不命中（整片失效
 
   官方形态 `"40%"` = 新门控命中；同形态 + 旧门控 `""` = 旧门控在官方客户端确实整片失效；
 * `client.js` md5 **`b61e535f1efe8bb19628e95e626f6d38`**（1552 行），与活体软链一致；
-* 窗口内观感待用户在官方客户端 `Cmd+R` 后目视（清单在 README §5）。
+* 窗口内观感：**2026-11-07 用户目视确认通过**（清单在 README §5）。
 
 **副作用（用户已接受）：** NEXT 的 `nextMaterial` 由 preload 异步 `invoke` 写入，材质设为 `off` 时
 启动瞬间属性尚未到位，门控会短暂命中一次，可能出现一次玻璃色闪现，随后消失；官方客户端属性永不
@@ -168,7 +175,7 @@ exact `material=transparent` 门控在它上面一条都不命中（整片失效
 * `bash verify.sh` → **62 ✓ / 0 ✗**（+20：§8 期望 1.5.2、9 锚点、8 百分比、3 深色 token；注释里的
   `backdrop-filter` 单词不误红，断言是声明级）；
 * 临时 mock 样张 `/tmp/v152-preview.png`（2560×1600，非仓库文件）：五处均透出壁纸、文字可读、无灰雾；
-* 窗口内观感待用户 `Cmd+R` 后目视；
+* 窗口内观感：**2026-11-07 用户目视确认通过**；
 * `client.js` md5 **`50495a6766bc68cba68010e9003716a4`**，与活体软链一致。
 
 ## v1.5.1 delta (frost dial + translucent inline code)
@@ -196,7 +203,7 @@ exact `material=transparent` 门控在它上面一条都不命中（整片失效
 * `bash verify.sh` → **42 ✓ / 0 ✗**（+6：var blur、无硬编码 36、`:frost`、`--dsh-vib-frost`、`_markdown_`、color-mix；§8 期望 1.5.1）；
 * `node visual-bg.mjs` → 0/36/100 三张 1280×800 样张（`/tmp/dsh-bg-preview-{0,36,100}.png`）：
   0 清晰、100 趋于均匀，三张均无灰雾/硬边；
-* 窗口内观感待用户 `Cmd+R` 后目视（滑杆两端 + 浅色壁纸下的行内代码）；
+* 窗口内观感：**2026-11-07 用户目视确认通过**（滑杆两端 + 浅色壁纸下的行内代码）；
 * `client.js` md5 **`7ee155e1194ef5422b57cd6d8d96489d`**，与活体软链一致。
 
 ## v1.5.0 delta (background image: wallpaper / desktop modes)
@@ -235,7 +242,7 @@ exact `material=transparent` 门控在它上面一条都不命中（整片失效
 * `bash verify.sh` → **36 ✓ / 0 ✗**（新增 7 条 BG 断言；§8 期望版本 1.5.0）；
 * `node visual-bg.mjs` → `/tmp/dsh-bg-preview.png`（1280×800）：橙/品红/青团透过三块面板可见，
   无整片灰雾、无硬边；
-* 窗口内观感（选图 / 切模式 / 关总开关 / 重启恢复 / 移除）待用户 `Cmd+R` 后目视，清单在 README §5。
+* 窗口内观感（选图 / 切模式 / 关总开关 / 重启恢复 / 移除）：**2026-11-07 用户目视确认通过**，清单在 README §5。
 * `client.js` md5 **`f15cd906692da4089e9871ac72d0beb5`**，与活体软链一致。
 
 **踩到的坑：** IDB 记录必须带 `keyPath:"id"`（否则 `store.get("image")` 取不到）；
