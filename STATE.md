@@ -19,6 +19,14 @@ turned into a git repository (`main`, tags `v1.2.0` and `v1.3.2`), and the profi
 re-pointed at the new path (old directory kept as a symlink to it). No plugin code changed:
 `client.js` md5 is `83db8447697538981563052b27dc951d` before and after. See `CHANGELOG.md`.
 
+**2026-11-07 文档整理：README 重写为用户向文档（未改一行插件代码，`client.js` md5 仍为 `568668ca77e230df1371c8c279c8455c`）**
+- **用户反馈**：「现在感觉像是把开发文档给写进去了……真正给对第一次了解该项目的人有用的信息又没多少」。
+- **做法**：`git mv README.md docs/DEVELOPMENT.md`（保留 §1–§6 编号，旧交叉引用继续有效），开发文档头部标注
+  「面向维护者」并把安装示例的绝对路径换成 `$HOME`；新 `README.md` 只保留用户关心的内容——一句话定位、两张截图、
+  环境要求、安装（市场 / npm 手动）、设置页控件表、常见问题、兼容性、开发入口、许可证。
+- **同步**：AGENTS.md 文件地图 + 全部「README §X」引用改指 `docs/DEVELOPMENT.md`；CHANGELOG 新增本日条目。
+- **截图**：README 里用 GitHub raw 绝对地址（npm tarball 的 `files` 不含 `assets/`，相对路径在 npm 页会裂图）。
+
 **迁移切换后的复验（2026-10-04 03:3x，切换挂载 + 旧目录改软链之后）**
 - `node smoke-test.mjs` → 112/112；`bash verify.sh` → 27 ✓ / 0 ✗（§1 源码↔安装逐字节一致、
   §2 `link:/Users/leixiaokang/Documents/DSH-Projects/dsh-vibrancy-skin`、§4 两条解析路径都指向新仓库、
@@ -32,7 +40,7 @@ re-pointed at the new path (old directory kept as a symlink to it). No plugin co
 
 **2026-10-04 复核与文档校正（未改一行插件代码，`client.js` md5 仍为 `83db8447697538981563052b27dc951d`）**
 - **用户验收通过**：`Cmd+R` 后 dsh-cost-meter「费用明细」面板实心可读、弹层不透明 → v1.3.2 的弹层修复确认有效；
-  README §5「弹层可读性」那两行由 `[ ]` 改 `[x]`（其余 9 条 `[ ]` 保持未勾，属"顺手扫一眼"级别）。
+  docs/DEVELOPMENT.md §5「弹层可读性」那两行由 `[ ]` 改 `[x]`（其余 9 条 `[ ]` 保持未勾，属"顺手扫一眼"级别）。
 - **计数漂移校正**：文档里 6 处 `verify.sh 25 项` 一律改为 **27 项**（AGENTS.md 文件地图 + 硬规则 2、
   本文件迁移复验段 + v1.3.2 delta、CHANGELOG 迁移段 + v1.3.2 段）。`smoke-test.mjs` 的 112 条本来就是对的。
 - **校正取证**（不是凭印象）：① 活体实测 `bash verify.sh | grep -o '✓' | wc -l` = 27，`✗` = 0；
@@ -42,12 +50,12 @@ re-pointed at the new path (old directory kept as a symlink to it). No plugin co
 - **路径校正**：旧目录实际在 `/Users/leixiaokang/Documents/DSH-Default/.dsh-vibrancy-skin-old-20261004-033509`。
 - 顺手发现、**未动**（留作待办）：`.backup/LAST_BACKUP_TS` 仍写 `20260928-054614`，未反映 2026-10-04 的迁前备份。
 
-**2026-11-07 窗口验收（用户确认）：** 用户在官方客户端执行 `Cmd+R` 后，README §5 里**全部**待验收项
+**2026-11-07 窗口验收（用户确认）：** 用户在官方客户端执行 `Cmd+R` 后，docs/DEVELOPMENT.md §5 里**全部**待验收项
 （含 v1.4.0 / v1.5.0 / v1.5.1 / v1.5.2 / v1.6.0 的历史遗留项与新加的 v1.6.1 设置页项）均通过：
 中栏/底栏/better-sidebar 透桌面、设置页不再误报材质、浅色主题正常、壁纸选图/切换/关总开关/重启恢复/
 移除图片正常、磨砂度滑杆与置灰分支正常、行内代码与五处半透明表面正常、开关回退与深层玻璃即时生效、
 `Cmd+B` 与 resize handle、发送按钮/补全弹层/右键菜单保持不透明、拖拽分栏与标签切换正常。
-README §5 的 30 个 `[ ]` 已全部改为 `[x]`。
+docs/DEVELOPMENT.md §5 的 30 个 `[ ]` 已全部改为 `[x]`。
 
 ## v1.6.1 delta (settings chrome for the official client)
 
@@ -83,7 +91,7 @@ apply 的 dispose 里删除自身 sheet、不动宿主 sheet。`client.js` 1552 
 * headless 样张 `/tmp/settings-preview/after.png`（1640×2800，2x，无宿主样式 + `SETTINGS_CSS`）显示标题
   22/16 px、开关 36×20 轨道 + 白色 knob（开蓝底、关灰底）、选中预设蓝描边、滑杆与重置均原生外观；
 * `client.js` md5 **`568668ca77e230df1371c8c279c8455c`**（2155 行），与活体软链一致；
-* 官方客户端里的实际观感：**2026-11-07 用户目视确认通过**（README §5 清单）。
+* 官方客户端里的实际观感：**2026-11-07 用户目视确认通过**（docs/DEVELOPMENT.md §5 清单）。
 
 **盘上文件：** `client.js` / `smoke-test.mjs` / `verify.sh` / `package.json`，以及 `README.md` / `STATE.md` /
 `CHANGELOG.md` / `AGENTS.md`。**未改：** 门控、四张材质表、第三方插件；无 `backdrop-filter`、无 `peerDependencies`。
@@ -133,7 +141,7 @@ exact `material=transparent` 门控在它上面一条都不命中（整片失效
 
   官方形态 `"40%"` = 新门控命中；同形态 + 旧门控 `""` = 旧门控在官方客户端确实整片失效；
 * `client.js` md5 **`b61e535f1efe8bb19628e95e626f6d38`**（1552 行），与活体软链一致；
-* 窗口内观感：**2026-11-07 用户目视确认通过**（清单在 README §5）。
+* 窗口内观感：**2026-11-07 用户目视确认通过**（清单在 docs/DEVELOPMENT.md §5）。
 
 **副作用（用户已接受）：** NEXT 的 `nextMaterial` 由 preload 异步 `invoke` 写入，材质设为 `off` 时
 启动瞬间属性尚未到位，门控会短暂命中一次，可能出现一次玻璃色闪现，随后消失；官方客户端属性永不
@@ -242,7 +250,7 @@ exact `material=transparent` 门控在它上面一条都不命中（整片失效
 * `bash verify.sh` → **36 ✓ / 0 ✗**（新增 7 条 BG 断言；§8 期望版本 1.5.0）；
 * `node visual-bg.mjs` → `/tmp/dsh-bg-preview.png`（1280×800）：橙/品红/青团透过三块面板可见，
   无整片灰雾、无硬边；
-* 窗口内观感（选图 / 切模式 / 关总开关 / 重启恢复 / 移除）：**2026-11-07 用户目视确认通过**，清单在 README §5。
+* 窗口内观感（选图 / 切模式 / 关总开关 / 重启恢复 / 移除）：**2026-11-07 用户目视确认通过**，清单在 docs/DEVELOPMENT.md §5。
 * `client.js` md5 **`f15cd906692da4089e9871ac72d0beb5`**，与活体软链一致。
 
 **踩到的坑：** IDB 记录必须带 `keyPath:"id"`（否则 `store.get("image")` 取不到）；
@@ -295,7 +303,7 @@ exact `material=transparent` 门控在它上面一条都不命中（整片失效
   AppFrame 中栏/底栏锚点、右栏 transparent、dark 双份、旧门控零残留）
 - `bash verify.sh` → **29 ✓ / 0 ✗**（v1.3.2 的 27 条里换了右栏锚点，新增 centerCol / bottomRow /
   NEXT 门控 / 旧门控零残留 4 条 + 静态色快照断言，并把 §6 日志段改到 `~/.dsh/logs/desktop-next.log`）
-- 未能自证的部分：**真实窗口观感**只能由用户 `Cmd+R` 后目视确认（README §5 已列出 5 个观察点）。
+- 未能自证的部分：**真实窗口观感**只能由用户 `Cmd+R` 后目视确认（docs/DEVELOPMENT.md §5 已列出 5 个观察点）。
 
 **没改的陈旧元数据（沿用 v1.3.2 的结论）：** profile 侧 `pnpm-lock.yaml` 等仍写旧 `link:` 路径；
 `.backup/LAST_BACKUP_TS` 仍是 `20260928-054614`。
@@ -345,7 +353,7 @@ exact `material=transparent` 门控在它上面一条都不命中（整片失效
 * Also checked for the user: DSH Desktop 2.0.17 / kernel 0.2.0-rc.2 added a **peerDependencies
   compatibility gate** (`evaluatePluginCompatibility` in `dsh-app-boot`). This plugin declares no
   `peerDependencies`, so the gate returns early and passes; adding a range would risk the plugin
-  being *rejected* on the next kernel bump, so it is deliberately omitted. README §6 documents the
+  being *rejected* on the next kernel bump, so it is deliberately omitted. docs/DEVELOPMENT.md §6 documents the
   rule, the current per-plugin verdicts, and why the 2026-09-29 `0.2.0-rc.1` warnings in
   `.plugin-manager/logs/` are stale.
 * **Not yet confirmed by eye:** the user must reload (`Cmd+R`) and reopen the panel once.

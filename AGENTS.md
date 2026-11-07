@@ -19,7 +19,8 @@ DSH Desktop 的**纯 CSS 注入插件**：没有构建步骤、没有依赖、�
 | `verify.sh` | 活体安装核对（当前 **69** 项）：源码↔安装 md5、profile 挂载、宿主日志（`~/.dsh/logs/desktop-next.log`）、sheet 完整性、NEXT 门控与锚点、背景图层、版本号 |
 | `visual-bg.mjs` | 背景图表的视觉样张（headless Chromium，输出 `/tmp/dsh-bg-preview.png`），不参与验收门禁 |
 | `rollback.sh` | 回滚辅助 |
-| `README.md` | 设计不变量 + 逐条实证（§1.x 解释「为什么这样改」） |
+| `README.md` | 用户向说明：这是什么 / 装 / 用 / FAQ（面向第一次接触的人） |
+| `docs/DEVELOPMENT.md` | 设计不变量 + 逐条实证、手动安装 / 回滚、验收清单、兼容性校验（原文 README） |
 | `STATE.md` | 逐版 delta / 实测记录 / 改过盘上哪些文件 |
 | `CHANGELOG.md` | 版本时间线与**历史完整性声明** |
 | `.backup/` | 真回滚点：v1.2.0 快照、v1.2.0 tar.gz、迁前整包快照、profile 侧文件备份 |
@@ -40,15 +41,15 @@ DSH Desktop 的**纯 CSS 注入插件**：没有构建步骤、没有依赖、�
 2. 改 `client.js` 后必须两条都绿：`node smoke-test.mjs`（230/230）与 `bash verify.sh`（69 项）；
    再确认 `md5 -q client.js` 与 `~/.dsh/profiles/desktop/node_modules/dsh-vibrancy-skin/client.js` 一致。
 3. **禁止 `backdrop-filter`**：在透明 vibrancy 窗口上会变成灰雾（`verify.sh` 有专门断言，写了就红）。
-   背景图那层的 `filter: blur()` 只模糊图片自己的像素，不是采样窗口后面，别混为一谈（见 README §1.3）。
+   背景图那层的 `filter: blur()` 只模糊图片自己的像素，不是采样窗口后面，别混为一谈（见 docs/DEVELOPMENT.md §1.3）。
 4. 所有选择器必须挂在**门控根元素**下（v1.6.0 起是 `html[data-platform="darwin"]:not([data-next-material="off"])`——官方 DeepSeek Harness 客户端从不写 `data-next-material`，同样命中；v1.5.2 及更早是 exact `html[data-platform="darwin"][data-next-material="transparent"]`，v1.3.2 及更早是 `<body data-dsh-desktop-*>`），并落在正确的 sheet；总开关必须能整张摘掉
    （smoke-test 校验作用域与 sheet 结构，`:is(a, b, c)` 这类选择器已被 `parseRules()` 括号感知解析处理）。
 5. **不要声明 `peerDependencies`**：manifest 里一旦有 peer，就会被内核的插件兼容性校验纳入判定，
-   内核升版可能导致**整个插件被拒绝加载**（比"样式失效"严重得多）。判定源码与逐包核对见 README §6。
+   内核升版可能导致**整个插件被拒绝加载**（比"样式失效"严重得多）。判定源码与逐包核对见 docs/DEVELOPMENT.md §6。
 6. 弹层不透明靠 sheet 1 的上游 token 快照 + `:is(dialog, [role="dialog"], [role="alertdialog"])` 规则；
    **不要**改成写死 `background`（挡掉换主题），也**不要**绑定某个第三方面板自己的作用域
    （第三方 DOM 位置会变，且在本插件作用域外是空操作）。
-7. 版本号三处同步：`package.json` / `verify.sh` 第 8 节期望值 / README + STATE 的 delta 记录。
+7. 版本号三处同步：`package.json` / `verify.sh` 第 8 节期望值 / docs/DEVELOPMENT.md + STATE 的 delta 记录。
 8. 动盘（profile 的 `package.json`、软链、日志）之前先备份，按 `rollback.sh` 的约定来。
 9. 提交信息用 `vX.Y.Z: 摘要`；同一提交里同步更新 README（为什么）/ STATE（改了什么）/ CHANGELOG（什么时候）。
 10. `verify.sh` 是**自定位**的（`SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"`），别把绝对路径写回去。
@@ -64,10 +65,10 @@ DSH Desktop 的**纯 CSS 注入插件**：没有构建步骤、没有依赖、�
 - **v1.6.1 是官方客户端设置页修复**：官方壳丢掉了 `dshDesktopSettings*` 样式层（Next 由
   `<style id="dsh-desktop-settings-styles">` 注入，563 行 / 17,653 字符），插件自带逐字拷贝的
   `SETTINGS_CSS`，`ensureSettingsStyles()` 仅在宿主 id 缺失时懒安装；Next 一行不注入，dispose 摘自身。
-  静态侧验收 230/230 + 69/0；官方客户端设置页观感已由用户 `Cmd+R` 确认（2026-11-07）。详见 STATE.md 的 v1.6.1 delta 与 README §1.0.3。
+  静态侧验收 230/230 + 69/0；官方客户端设置页观感已由用户 `Cmd+R` 确认（2026-11-07）。详见 STATE.md 的 v1.6.1 delta 与 docs/DEVELOPMENT.md §1.0.3。
 - **v1.6.0 是官方客户端适配**：29 处门控字面量放宽为 `html[data-platform="darwin"]:not([data-next-material="off"])`
   （官方客户端从不写 `data-next-material`，旧 exact `transparent` 在官方下整片失效），设置页 active 判定同步为
-  `nextMaterial !== "off"`。静态侧验收 224/224 + 63/0，真实 CSS 引擎五用例通过；窗口观感已由用户在官方客户端确认（2026-11-07）。详见 STATE.md 的 v1.6.0 delta 与 README §1.0.2。
+  `nextMaterial !== "off"`。静态侧验收 224/224 + 63/0，真实 CSS 引擎五用例通过；窗口观感已由用户在官方客户端确认（2026-11-07）。详见 STATE.md 的 v1.6.0 delta 与 docs/DEVELOPMENT.md §1.0.2。
 - **v1.5.2 是五处表面半透明**：用户气泡 58%、输入框 64%、文件编辑块 52%（hover 70%）、
   cost 侧栏卡片 44% + 内层透明、`cm-bbox` 50% 兜底、`cm-chip` 42%、`cm-stat-entry` 46%，
   全部 `color-mix` 原 token。静态侧验收 221/221 + 62/0，临时 mock 样张通过；窗口观感已确认（2026-11-07）。
@@ -83,7 +84,7 @@ DSH Desktop 的**纯 CSS 注入插件**：没有构建步骤、没有依赖、�
   （锚 `_centerCol` / `_bottomRow` / `_rightbarCol`）。静态侧验收 117/117 + 29/0，
   窗口观感已确认（2026-11-07）。详见 STATE.md 的 v1.4.0 delta。
 - **v1.3.2 验收通过（2026-10-04，用户确认）**：dsh-cost-meter「费用明细」面板实心可读、弹层不透明
-  （README §5 那两条已改 `[x]`）。当时清单里剩的 9 条已在 2026-11-07 的窗口验收中全部确认。
+  （docs/DEVELOPMENT.md §5 那两条已改 `[x]`）。当时清单里剩的 9 条已在 2026-11-07 的窗口验收中全部确认。
 - 计数基线（2026-11-07 实测校正）：`smoke-test.mjs` **230** 条、`verify.sh` **69** 项。
   历史值：v1.6.0 为 224 / 63，v1.5.2 为 221 / 62，v1.5.1 为 204 / 42，v1.5.0 为 168 / 36，v1.4.0 为 117 / 29，v1.3.2 为 112 / 27；`verify.sh` 的条数会随 `~/.dsh/logs`
   里存在几个日志文件浮动（每存在一个文件 +2 条），所以以 `grep -c ✓` / `✗` 的实测为准，不要按文档倒推。
