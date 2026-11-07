@@ -19,12 +19,31 @@
 | **v1.5.0** | ✓ | 背景图磨砂 |
 | **v1.5.1** | ✓ | 磨砂度 + 行内代码半透明 |
 | **v1.5.2** | ✓ | 五处表面半透明 |
-| **v1.6.0** | ✓ | 当前 HEAD（官方客户端适配：门控放宽） |
+| **v1.6.0** | ✓ | 详情（官方客户端适配：门控放宽） |
+| **v1.6.1** | ✓ | 当前 HEAD（官方客户端设置页：自带 settings fallback） |
 
 **不按文档"重建" v1.3.0 / v1.3.1**：重建物与当时实际运行的代码不是同一个东西，写进历史会污染「能回滚」的语义。
 它们是本仓库建立之前就存在的缺口，不是迁移造成的；迁移唯一新增的好处是 **v1.2.0 之后的每一版都会真正留痕**。
 
 ---
+
+## 2026-11-07 — v1.6.1：官方客户端设置页样式 fallback
+
+- **触发**：用户在官方客户端截图反馈「这个设置界面根本没法用啊」——插件自己的「磨砂玻璃」section
+  在官方壳里退化成默认 `h3` 大字、开关变成灰色小横条、顶部被裁掉半行；设置弹窗本身正常。
+- **根因**：section 复用宿主的 `dshDesktopSettings*` 类，这套样式在 Next 里由桌面壳用
+  `<style id="dsh-desktop-settings-styles">` 注入（源 `src/client/desktop-settings-styles.ts`，
+  563 行 / 17,653 字符 / 51 个类）；官方客户端 0.2.2-rc.1 把这整层丢掉（`dshDesktopSettings` 在官方
+  `app.asar` 命中 0、Next 命中 293）。与门控 / 材质 / 遮罩穿透无关。
+- **改动**：`client.js` 新增 `HOST_SETTINGS_STYLE_ID` / `SETTINGS_STYLE_ID` / `SETTINGS_CSS`（逐字拷贝）
+  与 `ensureSettingsStyles()`：宿主 sheet 存在则不注入（Next 外观不变），缺失才懒安装
+  `<style id="dsh-vibrancy-skin-settings-styles">`，dispose 时摘掉自身、不碰宿主。`client.js` 1552 → 2155 行；
+  `smoke-test.mjs` 224 → **230**（+6），`verify.sh` 63 → **69**（+6，§8 期望 1.6.1），`package.json` 1.6.1。
+- **证据**：`SETTINGS_CSS` 与 Next 源表 `equal true`；headless 样张（无宿主样式）里标题 22/16 px、
+  36×20 开关轨道 + 白色 knob、选中预设蓝描边、滑杆/按钮原生外观。
+- **验收**：`node smoke-test.mjs` **230 ✓ / 0 ✗**；`bash verify.sh` **69 ✓ / 0 ✗**；md5
+  `568668ca77e230df1371c8c279c8455c` 与活体软链一致。官方客户端实际观感待用户 `Cmd+R`。
+- **未改**：门控、四张材质表、第三方插件；无 `backdrop-filter`、无 `peerDependencies`。
 
 ## 2026-11-07 — v1.6.0：官方 DeepSeek Harness 客户端适配（门控放宽）
 

@@ -514,7 +514,72 @@ console.log("H. the section renders a native-shaped, localized tree");
   env.react.beginRender();
   calls.slotRegister[0].component({ t: tEn });
   check("no missing locale key in en", missingEn.length === 0, missingEn.join(", "));
-  check("no CSS is injected by the section itself", env.headChildren.length === 2);
+  /* The section styles itself only when the host shell does not provide the
+     desktop settings styles. NEXT provides them; the official client does not,
+     so there the section installs the vendored fallback once. */
+  check(
+    "section installs the settings fallback sheet when the host has none",
+    env.headChildren.length === 3 &&
+      env.headChildren[2].id === "dsh-vibrancy-skin-settings-styles",
+    env.headChildren.map((e) => e.id).join(", "),
+  );
+  const fallbackCss = env.headChildren[2]?.textContent ?? "";
+  check(
+    "fallback sheet carries the native section / switch / header rules",
+    fallbackCss.includes(".dshDesktopSettings {") &&
+      fallbackCss.includes(".dshDesktopSettingsToggle {") &&
+      fallbackCss.includes(".dshDesktopSettingsHeader h2"),
+  );
+  env.react.beginRender();
+  calls.slotRegister[0].component({ t });
+  check(
+    "re-rendering the section does not install a second copy",
+    env.headChildren.filter((e) => e.id === "dsh-vibrancy-skin-settings-styles").length === 1,
+    env.headChildren.map((e) => e.id).join(", "),
+  );
+}
+
+console.log("H2. settings fallback: host sheet wins, dispose removes only ours");
+{
+  /* NEXT 2.0.22-next's desktop shell installs this element itself. */
+  const env = makeEnv({ withBody: true });
+  env.document.head.appendChild({ id: "dsh-desktop-settings-styles", textContent: "host" });
+  const exported = env.module();
+  const { ctx, calls } = makeCtx({});
+  const dispose = exported.apply(ctx);
+  const { dicts } = calls.localeRegister[0];
+  const t = (key) => dicts.zh[key] ?? key;
+  env.react.beginRender();
+  calls.slotRegister[0].component({ t });
+  check(
+    "host sheet present: nothing is injected",
+    env.document.getElementById("dsh-vibrancy-skin-settings-styles") === null &&
+      env.document.getElementById("dsh-desktop-settings-styles") !== null,
+  );
+
+  const bare = makeEnv({ withBody: true });
+  const bareExports = bare.module();
+  const bareCtx = makeCtx({});
+  const bareDispose = bareExports.apply(bareCtx.ctx);
+  const bareDicts = bareCtx.calls.localeRegister[0].dicts;
+  bare.react.beginRender();
+  bareCtx.calls.slotRegister[0].component({ t: (key) => bareDicts.zh[key] ?? key });
+  check(
+    "section rendered: fallback installed",
+    bare.document.getElementById("dsh-vibrancy-skin-settings-styles") !== null,
+  );
+  bareDispose();
+  dispose();
+  check(
+    "dispose removes the fallback and the material sheets",
+    bare.document.getElementById("dsh-vibrancy-skin-settings-styles") === null &&
+      bare.headChildren.length === 0,
+    bare.headChildren.map((e) => e.id).join(", "),
+  );
+  check(
+    "dispose leaves a host sheet untouched",
+    env.document.getElementById("dsh-desktop-settings-styles") !== null,
+  );
 }
 
 console.log("I. does not touch the body when the window is not frosted");
@@ -548,9 +613,10 @@ console.log("I2. the official DeepSeek Harness client (no material key) gets the
   );
   check(
     "installs both default sheets with the material key absent",
-    env.headChildren.length === 2 &&
+    env.headChildren.length === 3 &&
       env.headChildren[0].id === "dsh-vibrancy-skin-styles" &&
-      env.headChildren[1].id === "dsh-vibrancy-skin-panel-styles",
+      env.headChildren[1].id === "dsh-vibrancy-skin-panel-styles" &&
+      env.headChildren[2].id === "dsh-vibrancy-skin-settings-styles",
     env.headChildren.map((e) => e.id).join(", "),
   );
   check(

@@ -214,8 +214,30 @@ grep -q 'dsh-vibrancy-skin:bg-mode' "$PKG/client.js" \
 grep -q 'indexedDB' "$PKG/client.js" \
   && ok "picture storage goes through IndexedDB (local only, never uploaded)" \
   || bad "IndexedDB storage path missing"
+# --- v1.6.1: settings chrome is self-contained ---------------------------
+# NEXT installs <style id="dsh-desktop-settings-styles"> from its desktop shell;
+# the official client dropped that layer entirely, so the plugin carries a
+# verbatim copy and installs it only when the host sheet is missing.
+grep -qF 'SETTINGS_STYLE_ID = "dsh-vibrancy-skin-settings-styles"' "$PKG/client.js" \
+  && ok "settings fallback id present" \
+  || bad "settings fallback style id missing"
+grep -qF 'HOST_SETTINGS_STYLE_ID = "dsh-desktop-settings-styles"' "$PKG/client.js" \
+  && ok "fallback is suppressed when the host settings sheet exists" \
+  || bad "host settings sheet probe missing (NEXT would get a duplicate sheet)"
+grep -qF 'function ensureSettingsStyles()' "$PKG/client.js" \
+  && ok "settings fallback installer present" \
+  || bad "settings fallback installer missing"
+grep -qF '.dshDesktopSettingsToggle {' "$PKG/client.js" \
+  && ok "fallback carries the native switch rule" \
+  || bad "fallback switch rule missing — the toggle would stay a bare button"
+grep -qF '.dshDesktopSettingsHeader h2 {' "$PKG/client.js" \
+  && ok "fallback carries the native header rule" \
+  || bad "fallback header rule missing — headings would use browser defaults"
+grep -qF '.dshDesktopSettingsChoice[data-selected="true"]' "$PKG/client.js" \
+  && ok "fallback carries the selected-preset rule" \
+  || bad "fallback selected-preset rule missing"
 node -e '
 const v = require("'"$PKG"'/package.json").version;
-console.log((v === "1.6.0" ? "\u2713" : "\u2717") + " installed version = " + v + (v === "1.6.0" ? "" : " (expected 1.6.0)"));
+console.log((v === "1.6.1" ? "\u2713" : "\u2717") + " installed version = " + v + (v === "1.6.1" ? "" : " (expected 1.6.1)"));
 ' 2>&1 | sed 's/^/  /'
 

@@ -4,7 +4,8 @@ macOS 原生 Vibrancy（磨砂玻璃）材质皮肤，用于 DSH NEXT / DSH Desk
 并为第三方侧边栏插件（dsh-better-sidebar）提供同款磨砂，**两级效果各自独立开关**；
 v1.5.0 起还可以上传一张本地图片当玻璃底图（「透到壁纸」/「透到桌面」）；
 v1.5.2 起把气泡、输入框、文件块与 cost-meter 的卡片/控件也改成同族半透明（§1.4）；
-v1.6.0 起同时适配官方 DeepSeek Harness 客户端（共用同一个 `~/.dsh` profile，无需重装），原因与取证见 §1.0.2。
+v1.6.0 起同时适配官方 DeepSeek Harness 客户端（共用同一个 `~/.dsh` profile，无需重装），原因与取证见 §1.0.2；
+v1.6.1 起设置页在官方客户端也恢复原生外观（自带同源 fallback 样式层，见 §1.0.3）。
 **只改材质，不改布局**：前三张样式表只触碰 `background` 与自定义属性；第四张（背景图）
 只画一个 `body::before` 装饰层（`position` / `inset` / `z-index` / `filter` / `background-*`，
 `pointer-events:none`），不参与布局，不碰任何 grid / 尺寸 / 圆角 / 内边距 / 溢出。
@@ -98,6 +99,33 @@ htmlPreview / sidebarBrowserFrame / shellOverlay，**从不写 `dataset.nextMate
   的 `--dsh-vib-tint-strength`）：官方形态（platform=darwin，**无** nextMaterial）→ `"40%"`；
   NEXT transparent → `"40%"`；NEXT off → `""`；platform=linux → `""`；对照：同一官方形态 +
   **旧**门控 → `""`（证明旧门控在官方客户端确实整片失效）。探针页在 `/tmp/gate-probe/`（临时文件，不入仓库）。
+
+### 1.0.3 v1.6.1 官方客户端设置页：为什么插件自带一份 settings 样式
+
+v1.6.0 之后皮肤在官方客户端生效了，但**插件自己的设置区**在 https://127.0.0.1 的官方壳里退化成浏览器默认排版：
+「外观 / 背景图 / 侧边栏」变成默认 `h3` 大字、两个开关变成紧贴标签的灰色小横条、内容顶部被裁掉半行。
+截图里设置弹窗本身是正常的（面板不透明、遮罩正常），所以不是材质问题，也不是穿透。
+
+根因不在门控：section 复用的是**宿主**的 `dshDesktopSettings*` 类，而 Next 的桌面壳在 `lib/client.js`
+（322,021 B）里带着 `src/client/desktop-settings-styles.ts`，以 `<style id="dsh-desktop-settings-styles">`
+注入 563 行 / 17,653 字符 / 51 个 `.dshDesktopSettings*` 规则；官方客户端 0.2.2-rc.1 把这整层丢掉了
+（`dshDesktopSettings` 在官方 `app.asar` 命中 **0**，Next 的 `app.asar` 命中 **293**）——类名还在，样式没了。
+
+**做法**：把 Next 那张表逐字拷贝进 `client.js`（`SETTINGS_CSS`），`ensureSettingsStyles()` 在 section 首次渲染时
+先找宿主 `#dsh-desktop-settings-styles`：存在就直接返回（Next 下**一行不注入**，外观与今天逐像素相同）；
+不存在才装 `<style id="dsh-vibrancy-skin-settings-styles">`。apply 的 dispose 负责摘掉自己这张表，宿主那
+张永远不碰。
+
+- **为什么不改成私有前缀全量自绘**：那等于永久放弃宿主样式，Next 与官方两边会各长一套，且以后宿主改
+  版式（间距、排版 token）插件跟不上。
+- **为什么要懒安装**：没打开设置页的会话不该背上 17 KB 的 CSS；`ensureSettingsStyles()` 只在 section
+  render 时调用，两道 id 查询后即返回。
+- **这张 fallback 表不挂门控**：设置页在 non-darwin、窗口材质 `off`、总开关关闭时都必须可用（否则用户
+  既关不掉也打不开）。它只命中 `.dshDesktopSettings*` 这几个宿主类，不碰外层布局。
+
+静态侧证据：`SETTINGS_CSS` 与 Next 源表**逐字相等**（17,653 字符，`equal true`）；headless 样张
+（`/tmp/settings-preview/after.png`，2x）里标题 22/16 px、开关是 36×20 圆角轨道 + 16 px 白色 knob
+（开＝品牌蓝、关＝灰）、选中预设蓝描边、滑杆与重置按钮均为原生外观。
 
 ### 三条不可松弛的红线
 
@@ -611,7 +639,7 @@ cp "$P/package.json" "$P/package.json.bak-$(date +%Y%m%d-%H%M%S)"
       与 `lib/preload-app.cjs` 实际写的属性逐字一致（在 app.asar 里 grep 到源头）
 - [x] 三个不透明面的锚点取自 ui-layout 的实际规则（`_centerCol` / `_bottomRow` / `_rightbarCol`
       都实测 `background: var(--dsw-alias-bg-base)`），且 `[data-platform=darwin]` 覆盖规则也一并核对
-- [x] `node smoke-test.mjs` → **117/117**；`bash verify.sh` → **29 ✓ / 0 ✗**（v1.5.0 为 **168/168** 与 **36 ✓ / 0 ✗**；v1.5.1 为 **204/204** 与 **42 ✓ / 0 ✗**；v1.5.2 为 **221/221** 与 **62 ✓ / 0 ✗**；v1.6.0 为 **224/224** 与 **63 ✓ / 0 ✗**，见下面几段）
+- [x] `node smoke-test.mjs` → **117/117**；`bash verify.sh` → **29 ✓ / 0 ✗**（v1.5.0 为 **168/168** 与 **36 ✓ / 0 ✗**；v1.5.1 为 **204/204** 与 **42 ✓ / 0 ✗**；v1.5.2 为 **221/221** 与 **62 ✓ / 0 ✗**；v1.6.0 为 **224/224** 与 **63 ✓ / 0 ✗**；v1.6.1 为 **230/230** 与 **69 ✓ / 0 ✗**，见下面几段）
 - [x] 已确认上游会自己透明的面（`_frame` / `_sidebarCol`）**不**被本插件重复染色
 - [x] 弹层快照改为直取静态调色板（`bluish-00` / `-950` / `-875`），无环、与 ui-theme 语义等价
 
@@ -691,6 +719,16 @@ cp "$P/package.json" "$P/package.json.bak-$(date +%Y%m%d-%H%M%S)"
 - [ ] 在官方客户端 `Cmd+R` 后用眼睛确认：中栏 / 侧栏 / 底栏透出桌面、气泡 / 输入框半透明、
       弹层仍不透明（此项留给用户）
 
+**官方客户端设置页修复（v1.6.1，2026-11-07）**
+
+- [x] 设置 section 的 `dshDesktopSettings*` 样式在宿主缺失时由插件自带（`ensureSettingsStyles()`，
+      仅在 `<style id="dsh-desktop-settings-styles">` 不存在时注入；Next 下不注入、不重复注入）
+- [x] `SETTINGS_CSS` 与 Next `/lib/client.js` 里的 `src/client/desktop-settings-styles.ts` 产物逐字相等
+      （17,653 字符 / 563 行）；headless 样张里标题层级、开关轨道、选中预设、滑杆均正常
+- [x] `node smoke-test.mjs` → **230/230**；`bash verify.sh` → **69 ✓ / 0 ✗**（§8 期望版本 1.6.1）
+- [ ] 在官方客户端 `Cmd+R` 后打开「设置 → 磨砂玻璃」确认：标题层级正常、两个开关是可点的开关、
+      滑杆与重置可用、无顶部裁切（此项留给用户）
+
 **还没被明确看过的（都不影响已达成效果）**
 
 - [ ] 关掉「启用磨砂玻璃」→ 面板像素级回到原生实心；再打开 → 恢复磨砂
@@ -768,4 +806,4 @@ function evaluatePluginCompatibility(manifest, exemptions = {}, runtimeVersion =
 | dshmarket@1.66.8 | `^0.2.0-rc.1` | 满足 |
 | @michengai/dsh-archive-manager@1.0.11 | 显式含 `0.2.0-rc.2` | 满足 |
 | @michengai/dsh-btw@0.1.15 | 显式含 `0.2.0-rc.2` | 满足 |
-| **dsh-vibrancy-skin@1.6.0** | **无 `peerDependencies`** | **放行** |
+| **dsh-vibrancy-skin@1.6.1** | **无 `peerDependencies`** | **放行** |

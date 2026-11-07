@@ -7,7 +7,8 @@ and **2026-10-28 03:5x** as **v1.4.0** (DSH NEXT 2.0.20-next / dsh 0.2.1-rc.3 po
 **2026-11-06** as **v1.5.0** (background image frost: wallpaper / desktop modes), and the same day as **v1.5.1**
 (frost dial + translucent inline code), then **v1.5.2** (translucent bubble / composer / file card / cost-meter
 surfaces), and **2026-11-07** as **v1.6.0** (official DeepSeek Harness client 0.2.2-rc.1: gate widened from
-material=transparent to darwin-minus-off).
+material=transparent to darwin-minus-off), and the same day as **v1.6.1** (settings chrome fallback:
+the official client dropped the `dshDesktopSettings*` stylesheet).
 **Source of truth:** this directory. `~/.dsh/profiles/desktop/node_modules/dsh-vibrancy-skin`
 is a **symlink to this directory**, so an edit here is already the installed copy — there is no
 copy step and no second place to keep in sync.
@@ -40,6 +41,45 @@ re-pointed at the new path (old directory kept as a symlink to it). No plugin co
   25 是**加那 2 条断言之前**（v1.3.1 时期）的数，当时忘记 +2。
 - **路径校正**：旧目录实际在 `/Users/leixiaokang/Documents/DSH-Default/.dsh-vibrancy-skin-old-20261004-033509`。
 - 顺手发现、**未动**（留作待办）：`.backup/LAST_BACKUP_TS` 仍写 `20260928-054614`，未反映 2026-10-04 的迁前备份。
+
+## v1.6.1 delta (settings chrome for the official client)
+
+**需求（用户 2026-11-07，官方客户端截图原话）：** 「我已经切到官方客户端了，这个设置界面根本没法用啊」。
+设置弹窗本身正常（面板不透明、遮罩正常），但插件自己的「磨砂玻璃」section 退化成浏览器默认排版：
+组标题是默认 `h3` 大字、两个开关是紧贴文字的灰色小横条、内容顶部被裁掉半行。
+
+**根因（取证自两个 `app.asar`）：** section 复用宿主的 `dshDesktopSettings*` 类。Next 的桌面壳在
+`/lib/client.js`（322,021 B）里带着 `src/client/desktop-settings-styles.ts`，以
+`<style id="dsh-desktop-settings-styles">` 注入 563 行 / 17,653 字符 / 51 个 `.dshDesktopSettings*` 规则
+（toggle 36×20、knob `translateX(16px)`、header 22/16 px…）。官方客户端 0.2.2-rc.1 把这整层丢掉了：
+`dshDesktopSettings` 在官方 `app.asar` 命中 **0**、Next 命中 **293**。与门控 / 窗口材质 / 遮罩穿透无关
+（面板 `._77Pn0W_panel` 用 `--dsw-alias-bg-layer-2` 静态实色，截图裁剪确认不透明）。
+
+**改动：** `client.js` 新增 `HOST_SETTINGS_STYLE_ID = "dsh-desktop-settings-styles"`、
+`SETTINGS_STYLE_ID = "dsh-vibrancy-skin-settings-styles"`、`SETTINGS_CSS`（逐字拷贝上面那张表，17,653 字符）
+与 `ensureSettingsStyles()`：先在 `document` 里找宿主 id，存在则返回（Next 一行不注入）；否则懒安装
+`<style id="dsh-vibrancy-skin-settings-styles">`（section 首次渲染时调用，两道 id 查询后即返回）；
+apply 的 dispose 里删除自身 sheet、不动宿主 sheet。`client.js` 1552 → **2155 行**。
+
+- **为什么不用私有前缀全量自绘**：那会放弃宿主在 Next 上的样式安全网（间距、排版 token、主题变量），
+  两边外观会各长一套。
+- **为什么不用品类组件**：官方客户端里没有提供 desktop settings 组件的包（`dsh-client-ui-*` 里无该项）。
+- **这张 fallback 表不挂门控**：设置页在 non-darwin / 材质 `off` / 总开关关闭时也必须可用；它只命中
+  `.dshDesktopSettings*` 自己的类，不碰外层布局。
+
+**验收（2026-11-07）：**
+
+* `node smoke-test.mjs` → **230 ✓ / 0 ✗**（+6：fallback 注入一次、宿主存在时不注入、重复渲染不重复注入、
+  逐字选择器（toggle/header/choice）、dispose 清理自身且不动宿主）；
+* `bash verify.sh` → **69 ✓ / 0 ✗**（+6 条源码断言，§8 期望 1.6.1）；
+* `SETTINGS_CSS` 与 Next 源表 `equal true`（17,653 字符）；
+* headless 样张 `/tmp/settings-preview/after.png`（1640×2800，2x，无宿主样式 + `SETTINGS_CSS`）显示标题
+  22/16 px、开关 36×20 轨道 + 白色 knob（开蓝底、关灰底）、选中预设蓝描边、滑杆与重置均原生外观；
+* `client.js` md5 **`568668ca77e230df1371c8c279c8455c`**（2155 行），与活体软链一致；
+* 官方客户端里的实际观感待用户 `Cmd+R` 后目视（README §5 清单）。
+
+**盘上文件：** `client.js` / `smoke-test.mjs` / `verify.sh` / `package.json`，以及 `README.md` / `STATE.md` /
+`CHANGELOG.md` / `AGENTS.md`。**未改：** 门控、四张材质表、第三方插件；无 `backdrop-filter`、无 `peerDependencies`。
 
 ## v1.6.0 delta (official DeepSeek Harness client: window gate widened)
 
