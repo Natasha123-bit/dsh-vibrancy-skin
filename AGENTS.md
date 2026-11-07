@@ -14,6 +14,7 @@ DSH Desktop 的**纯 CSS 注入插件**：没有构建步骤、没有依赖、�
 | `index.js` | 宿主侧插件入口（极小） |
 | `package.json` | manifest：`dsh.client.platform` / `dsh.bundle.patch` / `exports["./client"]` / `version` |
 | `cordis.patch.yml` | 插件管理器用的挂载补丁 |
+| `market/awesome-entry.yml` | 投稿 awesome-dsh-plugin 的条目草稿（`category: theme`）；市场展示文案以它为准 |
 | `smoke-test.mjs` | 纯静态断言（当前 230 条），改 `client.js` 必跑 |
 | `verify.sh` | 活体安装核对（当前 **69** 项）：源码↔安装 md5、profile 挂载、宿主日志（`~/.dsh/logs/desktop-next.log`）、sheet 完整性、NEXT 门控与锚点、背景图层、版本号 |
 | `visual-bg.mjs` | 背景图表的视觉样张（headless Chromium，输出 `/tmp/dsh-bg-preview.png`），不参与验收门禁 |

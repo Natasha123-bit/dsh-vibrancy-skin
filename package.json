@@ -2,6 +2,26 @@
   "name": "dsh-vibrancy-skin",
   "version": "1.6.1",
   "description": "macOS native vibrancy (frosted glass) material for the DSH NEXT / DSH Desktop main pane and third-party sidebars, with a native Settings section. Material only — zero layout changes.",
+  "license": "MIT",
+  "author": "Natasha123-bit",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Natasha123-bit/dsh-vibrancy-skin.git"
+  },
+  "homepage": "https://github.com/Natasha123-bit/dsh-vibrancy-skin#readme",
+  "bugs": {
+    "url": "https://github.com/Natasha123-bit/dsh-vibrancy-skin/issues"
+  },
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "theme",
+    "skin",
+    "vibrancy",
+    "frosted-glass",
+    "macos"
+  ],
   "type": "module",
   "main": "index.js",
   "exports": {

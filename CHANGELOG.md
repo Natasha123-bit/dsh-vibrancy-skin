@@ -27,6 +27,20 @@
 
 ---
 
+## 2026-11-07 — 市场收录准备（awesome-dsh-plugin / category: theme）
+
+- **触发**：用户要求直接做插件上架（DSH 插件市场）的准备。
+- **改动（只动元数据，`client.js` / 四张样式表零改动）**：新增 MIT `LICENSE`；`package.json` 补
+  `license` / `author` / `repository` / `homepage` / `bugs` / `keywords`；新增 `market/awesome-entry.yml`
+  （投稿 awesome-dsh-plugin 的 `data/plugins/Natasha123-bit__dsh-vibrancy-skin.yml` 草稿，category `theme`）；
+  GitHub 仓库加 `dsh-plugin` topic。
+- **收录条件核对**：`dsh.bundle.patch` 已有（可安装）；仓库 2026-11-05 创建、已满 1 天；topic 已加；
+  描述只陈述功能、不带营销词；插件 macOS 专属，条目描述已写明。
+- **验收**：`node smoke-test.mjs` **230/230**；`bash verify.sh` **69 ✓ / 0 ✗**；`npm pack --dry-run`
+  6 个文件（新增 LICENSE，47.8 kB）。
+- **未做**：没 push、没开 PR、没 npm publish（本机 npm 未登录）；`client.js` md5 仍为
+  `568668ca77e230df1371c8c279c8455c`。
+
 ## 2026-11-07 — 窗口验收通过：README §5 全部项目（v1.4.0–v1.6.1）
 
 - **用户确认**：「窗口验收通过，readme中的待验收项也全部都通过（包括前面版本的）」。
